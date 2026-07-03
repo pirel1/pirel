@@ -1,0 +1,4 @@
+* For Python sequence indexing that may use negative positions (for example patterns like `base[:i]` together with `base[i]` where `i` can be negative), preserve index semantics in JavaScript.
+* Hard validity rule: do not emit raw `base[i]` when `i` can be negative in this pattern.
+* Use a negative-index-safe access form such as `base[base.length + i]` or `base.at(i)`.
+* Keep the same control-flow and condition structure while only fixing index semantics.

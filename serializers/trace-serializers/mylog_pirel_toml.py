@@ -1,0 +1,178 @@
+import collections
+import hashlib
+import heapq
+import itertools
+import json
+import math
+import os
+import random
+import re
+import sys
+import types
+import queue
+from collections.abc import Iterable, Iterator
+from copy import deepcopy
+from typing import Union
+
+
+_default_print = print
+JS_MAX_SAFE_INTEGER = 9_007_199_254_740_991
+JS_MIN_SAFE_INTEGER = -9_007_199_254_740_991
+
+
+def is_defined_in_main(obj):
+    return getattr(obj, '__module__', None) == '__main__'
+
+def serialize_none():
+    return ["null"]
+
+def serialize_bool(arg: bool):
+    return ["bool", arg]
+
+def serialize_str(arg: str):
+    return ["string", len(arg), arg]
+
+def serialize_num(arg: Union[int, float]):
+    if arg == float('inf'):
+        return serialize_str("inf")
+    if arg == -float('inf'):
+        return serialize_str("-inf")
+    if math.isnan(arg):
+        return serialize_str("nan")
+    if JS_MIN_SAFE_INTEGER <= arg <= JS_MAX_SAFE_INTEGER:
+        if abs(arg) <= 1e-9:
+            return ["number", 0]
+        # force whole numbers to be int type
+        if arg % 1 == 0:
+            return ["number", int(arg)]
+        srlzd = '{:.6e}'.format(float(arg))
+        # remove leading zeros in exponent
+        srlzd = re.sub(r'e([+-])0*(\d+)', r'e\1\2', srlzd)
+        return serialize_str(srlzd)
+    return serialize_str('{:.6e}'.format(float(arg)))
+
+def _canonical_any_of():
+    return ["any_of", ["opaque_object"], ["dict", 0, []]]
+
+def _escape_non_ascii_chars(text: str) -> str:
+    return ''.join(c if ord(c) < 128 else '\\u{:04x}'.format(ord(c)) for c in text)
+
+def _normalize_for_hash(val):
+    if not isinstance(val, list):
+        if isinstance(val, str):
+            escaped = _escape_non_ascii_chars(val)
+            return escaped
+        return val
+    if len(val) >= 1 and val[0] == 'any_of':
+        return _canonical_any_of()
+    if len(val) == 1 and val[0] == 'opaque_object':
+        return _canonical_any_of()
+    if len(val) == 3 and val[0] == 'dict' and val[1] == 0 and val[2] == []:
+        return _canonical_any_of()
+    return [_normalize_for_hash(child) for child in val]
+
+def serialize_list(arg: Iterable):
+    serialized_vals = [serialize(val) for val in arg]
+    normalized_vals = [_normalize_for_hash(val) for val in serialized_vals]
+    serialized_vals_str = json.dumps(normalized_vals, separators=(',', ':'))
+    hashed = hashlib.sha256(serialized_vals_str.encode('utf-8')).hexdigest()
+    return ["hash", len(hashed), hashed]
+
+def serialize_set(arg: set):
+    sorted_vals = sorted(arg)
+    serialized_vals = [serialize(val) for val in sorted_vals]
+    return ["set", len(arg), serialized_vals]
+
+def serialize_dict(arg: dict):
+    argcp = deepcopy(arg)
+    keys = list(argcp.keys())
+    # convert int and float keys to strings
+    # since JS object keys are always strings
+    for key in keys:
+        if isinstance(key, str):
+            continue
+        if isinstance(key, (int, float)):
+            new_key = str(key)
+            argcp[new_key] = argcp[key]
+            del argcp[key]
+            continue
+        raise NotImplementedError
+    sorted_keys = sorted(argcp.keys())
+    serialized_key_value_pairs = []
+    for key in sorted_keys:
+        serialized_key_value_pairs.append(serialize([key, argcp[key]]))
+    return ["dict", len(argcp), serialized_key_value_pairs]
+
+def serialize_generator(arg):
+    # intentionally avoid consuming the generator
+    return serialize_iterator(arg)
+
+def serialize_iterator(arg):
+    # intentionally avoid consuming the iterator
+    return ["iterator"]
+
+def serialize_callable(arg):
+    return ["function"]
+
+def serialize_defined_in_main(arg):
+    _class_name = getattr(arg, '_class_name', None)
+    if _class_name is not None:
+        assert isinstance(_class_name, str), f"_class_name should be a string, got {_class_name}"
+        return ["defined_in_main", _class_name]
+    return ["defined_in_main", arg.__class__.__name__]
+
+def serialize_regex(arg):
+    pattern = arg.pattern
+    return ["regex", len(pattern), pattern]
+
+def serialize(arg):
+    if arg is None:
+        return serialize_none()
+    if isinstance(arg, bool):
+        return serialize_bool(arg)
+    if isinstance(arg, str):
+        return serialize_str(arg)
+    if isinstance(arg, (int, float)):
+        return serialize_num(arg)
+    if isinstance(arg, (set, frozenset)):
+        return serialize_set(arg)
+    if isinstance(arg, dict):
+        return serialize_dict(arg)
+    if isinstance(arg, types.GeneratorType):
+        return serialize_generator(arg)
+    if isinstance(arg, Iterator):
+        return serialize_iterator(arg)
+    if isinstance(arg, Iterable):
+        return serialize_list(list(arg))
+    if isinstance(arg, queue.Queue):
+        return serialize_list(list(arg.queue))
+    if isinstance(arg, re.Pattern):
+        return serialize_regex(arg)
+    if callable(arg):
+        return serialize_callable(arg)
+    if is_defined_in_main(arg):
+        return serialize_defined_in_main(arg)
+    if type(arg) is object:
+        return ["opaque_object"]
+    if isinstance(arg, Exception):
+        return ["base_exception"]
+    str_result = str(arg)
+    return ["unknown", len(str_result), str_result]
+
+_trace_idx = 0  # for debugging
+def myexactlog(*args):
+    global _trace_idx
+    info_list = ["MYLOGEX:"]
+    for arg in args:
+        info_list.append(serialize(arg))
+    _default_print(json.dumps(info_list), flush=True)
+    _trace_idx += 1
+
+def print(*args, **kwargs):
+    # myexactlog(args)
+    # return _default_print(*args, **kwargs)
+    pass
+
+# this function is inserted into body node types' `block`
+def secret_fun_4071():
+    return 0

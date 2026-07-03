@@ -1,0 +1,161 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;; BASE RULES TO TRANSLATE FUNCTION HEADERS ;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(match_expand
+  (fragment ("py.module" "*"))
+  (fragment ("js.program" "*1"))
+)
+
+(match_expand
+  (fragment ("py.function_definition" (str "def") "*") "*")
+  (fragment ("js.function_declaration" (str "function") "*1") "*2")
+)
+
+(match_expand
+  (fragment ("py.identifier" "_val_") "*")
+  (fragment ("js.identifier" "_val1_") "*1")
+)
+
+(match_expand
+  (fragment ("py.parameters" "*") "*")
+  (fragment ("js.formal_parameters" "*1") "*2")
+)
+
+(match_expand
+  (fragment ("py.default_parameter" "." (str "=") ".") "*")
+  (fragment ("js.assignment_pattern" ".1" (str "=") ".2") "*3")
+)
+
+(match_expand
+  (fragment ("py.list_splat_pattern" (str "*") ".") "*")
+  (fragment ("js.rest_pattern" (str "...") ".1") "*2")
+)
+
+(match_expand
+  (fragment ("py.block" "*") "*")
+  (fragment ("js.statement_block" "*1") "*2")
+)
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;; BASIC BODY FILLER ;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(match_expand
+  (fragment ("py.pass_statement" "*") "*")
+  (fragment "*2")
+)
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;; RULES FOR BASIC TYPES ;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;; already added above
+;;;;;; (match_expand
+;;;;;;   (fragment ("py.identifier" "_val_") "*")
+;;;;;;   (fragment ("js.identifier" "_val1_") "*1")
+;;;;;; )
+
+(match_expand
+  (fragment ("py.integer" "_val_") "*")
+  (fragment ("js.number" "_val1_") "*1")
+)
+
+(match_expand
+  (fragment ("py.float" "_val_") "*")
+  (fragment ("js.number" "_val1_") "*1")
+)
+
+(match_expand
+  (fragment ("py.none") "*")
+  (fragment ("js.null") "*1")
+)
+
+(match_expand
+  (fragment ("py.string" (str "\"") ("py.string_content" "_val_") (str "\"")) "*")
+  (fragment ("js.string" (str "'") ("js.string_fragment" "_val1_") (str "'")) "*1")
+)
+
+(match_expand
+  (fragment ("py.string" (str "\"") ("py.escape_sequence" "_val_") (str "\"")) "*")
+  (fragment ("js.string" (str "\"") ("js.escape_sequence" "_val1_") (str "\"")) "*1")
+)
+
+(match_expand
+  (fragment ("py.string" (str "\"") (str "\"")) "*")
+  (fragment ("js.string" (str "\"") (str "\"")) "*1")
+)
+
+(match_expand
+  (fragment ("py.identifier" "_val_") "*")
+  (fragment ("js.property_identifier" "_val1_") "*1")
+)
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;; RULE(S) THAT WE CANNOT LEARN AT THE MOMENT ;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;; COMMENT (IGNORE)
+(match_expand
+  (fragment ("py.comment" "_val_") "*")
+  (fragment "*1")
+)
+
+;;;;;; from X import * (IGNORE)
+(match_expand
+  (fragment ("py.import_from_statement" (str "from") ("py.dotted_name" ("py.identifier" "_val_")) (str "import") ("py.wildcard_import" (str "*"))) "*")
+  (fragment "*1")
+)
+
+;;;;;; from X import Y (IGNORE)
+(match_expand
+  (fragment ("py.import_from_statement" (str "from") ("py.dotted_name" ("py.identifier" "_val_")) (str "import") ("py.dotted_name" ("py.identifier" "_val_"))) "*")
+  (fragment "*1")
+)
+
+;;;;;; import X.Y (IGNORE)
+(match_expand
+  (fragment ("py.import_statement" (str "import") ("py.dotted_name" "." (str ".") ".")) "*")
+  (fragment "*1")
+)
+
+;;;;;; import X (IGNORE)
+(match_expand
+  (fragment ("py.import_statement" (str "import") ("py.dotted_name" ("py.identifier" "_val_"))) "*")
+  (fragment "*1")
+)
+
+(match_expand
+  (fragment ("py.attribute" ("py.identifier" (val "sys")) (str ".") ("py.identifier" (val "maxsize"))) "*")
+  (fragment ("js.number" (val "9223372036854776000")) "*1")
+)
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;; SUBJECT SPECIFIC RULES FOR ASSISTANCE ;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;; len(v) -> v.length
+(match_expand
+  (fragment ("py.call" ("py.identifier" (val "len")) ("py.argument_list" (str "(") "." (str ")"))) "*")
+  (fragment ("js.member_expression" ".1" (str ".") ("js.property_identifier" (val "length"))) "*2")
+)
+
+;;;;;; len(v) -> v.size
+(match_expand
+  (fragment ("py.call" ("py.identifier" (val "len")) ("py.argument_list" (str "(") "." (str ")"))) "*")
+  (fragment ("js.member_expression" ".1" (str ".") ("js.property_identifier" (val "size"))) "*2")
+)
+
+;;;;;; len(v) -> Object.keys(v).length
+(match_expand
+  (fragment ("py.call" ("py.identifier" (val "len")) ("py.argument_list" (str "(") "." (str ")"))) "*")
+  (fragment ("js.member_expression" ("js.call_expression" ("js.member_expression" ("js.identifier" (val "Object")) (str ".") ("js.property_identifier" (val "keys"))) ("js.arguments" (str "(") ".1" (str ")"))) (str ".") ("js.property_identifier" (val "length"))) "*2")
+)
+
+;;;;;; str(v) -> String(v)
+(match_expand
+  (fragment ("py.call" ("py.identifier" (val "str")) ("py.argument_list" (str "(") "." (str ")"))) "*")
+  (fragment ("js.call_expression" ("js.identifier" (val "String")) ("js.arguments" (str "(") ".1" (str ")"))) "*2")
+)

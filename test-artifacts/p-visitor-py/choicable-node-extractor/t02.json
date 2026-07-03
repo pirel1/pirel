@@ -1,0 +1,10 @@
+{
+  "code": "def CommentValue_dlm___init__(val, comment, beginline, _dict):\n    class_var.val = val\n    separator = '\\n' if beginline else ' '\n    class_var.comment = separator + comment\n    class_var._dict = _dict",
+  "choicable_nodes": [
+    "val",
+    "'\\n' if beginline else ' '",
+    "separator + comment",
+    "_dict"
+  ],
+  "exclude_stat_nids": []
+}

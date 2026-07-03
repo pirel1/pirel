@@ -1,0 +1,20 @@
+{
+  "ground_truth_translations": {
+    "SkelClass": {
+      "src": "    Clz = type(name, (), {})\n    return Clz",
+      "tar": "    var Clz = function() {\n        var _class_var = {};\n        _class_var._class_name = name;\n        return _class_var;\n    };\n    return Clz;"
+    },
+    "_inorder_traversal": {
+      "src": "        if node is not None:\n            yield from class_var._inorder_traversal(node.left)\n            yield node\n            yield from class_var._inorder_traversal(node.right)",
+      "tar": "        if (node !== null) {\n            yield* class_var._inorder_traversal(node.left);\n            yield node;\n            yield* class_var._inorder_traversal(node.right);\n        }",
+      "is_generator": true
+    },
+    "_preorder_traversal": {
+      "src": "        if node is not None:\n            yield node\n            yield from class_var._preorder_traversal(node.left)\n            yield from class_var._preorder_traversal(node.right)",
+      "tar": "        if (node !== null) {\n            yield node;\n            yield* class_var._preorder_traversal(node.left);\n            yield* class_var._preorder_traversal(node.right);\n        }",
+      "is_generator": true
+    }
+  },
+  "learn_overfitted_rules_stat_nids": [],
+  "learn_overfitted_rules_simple_ntexts": []
+}

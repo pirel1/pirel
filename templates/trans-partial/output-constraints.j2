@@ -1,0 +1,19 @@
+CONSTRAINTS:
+{% include 'output-constraints/translating-none-comparison.j2' %}
+{% include 'output-constraints/translating-function-calls.j2' %}
+{% include 'output-constraints/do-not-use-bigint.j2' %}'
+{% if use_constraint_trans_equals_op %}
+{% include 'output-constraints/translating-equals-operator.j2' %}
+{% endif %}
+{% if use_constraint_trans_modulus_op %}
+{% include 'output-constraints/translating-modulus-operator.j2' %}
+{% endif %}
+{% if use_constraint_keep_parentheses %}
+{% include 'output-constraints/keep-parentheses-if-any.j2' %}
+{% endif %}
+{% if use_constraint_trans_multiline_strings %}
+{% include 'output-constraints/translating-multiline-strings.j2' %}
+{% endif %}
+{% if use_constraint_trans_for_enumerate | default(false) %}
+{% include 'output-constraints/translating-for-enumerate.j2' %}
+{% endif %}

@@ -1,0 +1,53 @@
+CONSTRAINTS:
+{% include 'output-constraints/single-statement.j2' %}
+{% include 'output-constraints/translating-none-comparison.j2' %}
+{% include 'output-constraints/translating-function-calls.j2' %}
+{% include 'output-constraints/preserve-control-flow-structure.j2' %}
+{% include 'output-constraints/no-ternary-for-control-flow.j2' %}
+{% include 'output-constraints/preserve-control-flow-structure-2.j2' %}
+{% include 'output-constraints/use-var-for-variable-declarations.j2' %}
+{% if use_constraint_trans_negative_index_subscript | default(false) %}
+{% include 'output-constraints/translating-negative-index-subscripts.j2' %}
+{% endif %}
+{% if use_constraint_trans_assignment_declare_second %}
+{% include 'output-constraints/translating-assignment-declare-second.j2' %}
+{% endif %}
+{% if use_constraint_trans_assignment_declare_first %}
+{% include 'output-constraints/translating-assignment-declare-first.j2' %}
+{% endif %}
+{% if use_constraint_trans_equals_op %}
+{% include 'output-constraints/translating-equals-operator.j2' %}
+{% endif %}
+{% if use_constraint_trans_modulus_op %}
+{% include 'output-constraints/translating-modulus-operator.j2' %}
+{% endif %}
+{% if use_constraint_trans_comp_stat %}
+{% include 'output-constraints/translating-compound-statement.j2' %}
+{% endif %}
+{% if use_constraint_trans_secret_fn %}
+{% include 'output-constraints/translating-secret-fn.j2' %}
+{% endif %}
+{% if use_constraint_trans_array_sort %}
+{% include 'output-constraints/translating-array-sort.j2' %}
+{% endif %}
+{% if use_constraint_trans_type_metaclass %}
+{% include 'output-constraints/translating-type-metaclass.j2' %}
+{% endif %}
+{% if use_constraint_trans_raise_statement %}
+{% include 'output-constraints/translating-raise-statement.j2' %}
+{% endif %}
+{% if use_constraint_trans_multiline_strings %}
+{% include 'output-constraints/translating-multiline-strings.j2' %}
+{% endif %}
+{% if use_constraint_trans_for_enumerate | default(false) %}
+{% include 'output-constraints/translating-for-enumerate.j2' %}
+{% endif %}
+{% if use_constraint_trans_py__class__ %}
+{% include 'output-constraints/translating-py__class__.j2' %}
+{% endif %}
+{% if use_constraint_trans_regex_match_start %}
+{% include 'output-constraints/translating-regex-match-start.j2' %}
+{% endif %}
+{% if use_constraint_trans_regex_re_match %}
+{% include 'output-constraints/translating-regex-re-match.j2' %}
+{% endif %}

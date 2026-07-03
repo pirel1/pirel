@@ -1,0 +1,20 @@
+;;;;;;;; these rules are needed to obtain the translation of the test script in source language
+
+;;;;;;;; inserted for EOT validation to terminate immediately
+;;;;;;;; after the validated statement path executes.
+(match_expand
+  (fragment ("py.expression_statement" ("py.call" ("py.attribute" ("py.identifier" (val "os")) (str ".") ("py.identifier" (val "_exit"))) ("py.argument_list" (str "(") ("py.integer" (val "0")) (str ")")))) "*")
+  (fragment ("js.expression_statement" ("js.call_expression" ("js.member_expression" ("js.identifier" (val "process")) (str ".") ("js.property_identifier" (val "exit"))) ("js.arguments" (str "(") ("js.number" (val "0")) (str ")")))) "*1")
+)
+
+;;;;;;;; translates `secret_fun_4071()` function call that is inserted as a statement in `block`
+(match_expand
+  (fragment ("py.expression_statement" ("py.call" ("py.identifier" (val "secret_fun_4071")) ("py.argument_list" (str "(") (str ")")))) "*")
+  (fragment ("js.expression_statement" ("js.call_expression" ("js.identifier" (val "secret_fun_4071")) ("js.arguments" (str "(") (str ")")))) "*1")
+)
+
+;;;;;;;; translates `secret_fun_4071()` function call that is inserted as a `call` in body node types (e.g. `list`)
+(match_expand
+  (fragment ("py.call" ("py.identifier" (val "secret_fun_4071")) ("py.argument_list" (str "(") (str ")"))) "*")
+  (fragment ("js.call_expression" ("js.identifier" (val "secret_fun_4071")) ("js.arguments" (str "(") (str ")"))) "*1")
+)

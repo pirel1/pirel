@@ -1,0 +1,11 @@
+version = 1
+
+[[annotations]]
+path = 'gfg/py/*.py'
+SPDX-FileCopyrightText = ['GeeksforGeeks', 'Facebook Research']
+SPDX-License-Identifier = 'CC-BY-SA-2.0'
+
+[[annotations]]
+path = ['skel/evtx.d/*', '*/README.md']
+SPDX-FileCopyrightText = 'None'
+SPDX-License-Identifier = 'CC0-1.0'

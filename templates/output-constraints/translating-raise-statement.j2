@@ -1,0 +1,3 @@
+* When translating a raise statement from Python to JavaScript, keep the exception name and message the same.
+  For example, `raise SomeException('Error occurred')` should be translated to `throw new SomeException('Error occurred');`.
+  Exception: translate Python's built-in `Exception` to JavaScript's built-in `Error` (e.g., `raise Exception('Error')` becomes `throw new Error('Error');`).

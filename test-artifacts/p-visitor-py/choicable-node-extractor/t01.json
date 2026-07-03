@@ -1,0 +1,8 @@
+{
+  "code": "def TomlDecodeError(param_0, param_1, param_2):\n    class_var = _get_base_exception(param_0, param_1, param_2)\n    return class_var",
+  "choicable_nodes": [
+    "_get_base_exception(param_0, param_1, param_2)",
+    "class_var"
+  ],
+  "exclude_stat_nids": []
+}

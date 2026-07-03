@@ -1,0 +1,317 @@
+{
+  "ground_truth_translations": {
+    "user_check_type": {
+      "src": "    if 'function' in str(_type):\n        for i in obj._class_name.split(';'):\n            if i == str(_type).split(' ')[1]:\n                return True\n        return False",
+      "tar": "    if (_type === null || _type === undefined) {\n        return false;\n    }\n    if (Array.isArray(_type)) {\n        for (var i = 0; i < _type.length; i++) {\n            if (user_check_type(obj, _type[i])) {\n                return true;\n            }\n        }\n        return false;\n    }\n    var type_name = null;\n    if (typeof _type === 'function' && _type.name) {\n        type_name = _type.name;\n    } else if (typeof _type === 'string') {\n        var fn_match = _type.match(/<function\\s+([^\\s>]+)/);\n        var cls_match = _type.match(/<class\\s+'([^']+)'>/);\n        if (fn_match) {\n            type_name = fn_match[1];\n        } else if (cls_match) {\n            type_name = cls_match[1];\n        } else {\n            type_name = _type;\n        }\n    }\n    if (type_name === 'dict' || type_name === 'object' || type_name === 'func_dict') {\n        return obj !== null && typeof obj === 'object' && !Array.isArray(obj);\n    }\n    if (obj !== null && typeof obj === 'object' && typeof obj._class_name === 'string' && type_name) {\n        var names = obj._class_name.split(';');\n        for (var j = 0; j < names.length; j++) {\n            if (names[j] === type_name) {\n                return true;\n            }\n        }\n    }\n    if (typeof _type === 'string') {\n        if (_type === 'string') return typeof obj === 'string' || obj instanceof String;\n        if (_type === 'number') return typeof obj === 'number';\n        if (_type === 'boolean') return typeof obj === 'boolean';\n        if (_type === 'function') return typeof obj === 'function';\n        return false;\n    }\n    if (_type === Number) return typeof obj === 'number';\n    if (_type === String) return typeof obj === 'string' || obj instanceof String;\n    if (_type === Boolean) return typeof obj === 'boolean';\n    if (_type === Function) return typeof obj === 'function';\n    if (_type === Object) return obj !== null && typeof obj === 'object';\n    try {\n        return obj instanceof _type;\n    } catch (_e) {\n        return false;\n    }"
+    },
+    "SkelClass": {
+      "src": "    Clz = type(class_name, (), {'_class_name': class_name})\n    return Clz()",
+      "tar": "    var _class_var = {};\n    _class_var._class_name = class_name;\n    return _class_var;"
+    },
+    "system_path": {
+      "src": "    cd = os.path.dirname(__file__)\n    datadir = os.path.join(cd, 'evtx.d')\n    systempath = os.path.join(datadir, 'system.evtx')\n    return systempath",
+      "tar": "    const path = require('path');\n    const cd = path.dirname(__filename);\n    const datadir = path.join(cd, \"evtx.d\");\n    return path.join(datadir, \"system.evtx\");"
+    },
+    "system": {
+      "src": "    p = system_path()\n    with open(p, 'rb') as f:\n        return f.read()",
+      "tar": "    const fs = require('fs');\n    const p = system_path();\n    return fs.readFileSync(p);"
+    },
+    "security_path": {
+      "src": "    cd = os.path.dirname(__file__)\n    datadir = os.path.join(cd, 'evtx.d')\n    secpath = os.path.join(datadir, 'security.evtx')\n    return secpath",
+      "tar": "    const path = require('path');\n    const cd = path.dirname(__filename);\n    const datadir = path.join(cd, \"evtx.d\");\n    return path.join(datadir, \"security.evtx\");"
+    },
+    "security": {
+      "src": "    p = security_path()\n    with open(p, 'rb') as f:\n        return f.read()",
+      "tar": "    const fs = require('fs');\n    const p = security_path();\n    return fs.readFileSync(p);"
+    },
+    "user_infinite_counter": {
+      "src": "    start = 0\n    while True:\n        yield start\n        start += 1",
+      "tar": "    var start = 0;\n    while (true) {\n        yield start;\n        start += 1;\n    }",
+      "is_generator": true
+    },
+    "get_input": {
+      "src": "    if _case == 'case1':\n        return system()\n    else:\n        return security()",
+      "tar": "    if (_case === \"case1\") {\n        return system();\n    } else {\n        return security();\n    }"
+    },
+    "_get_expected_output3": {
+      "src": "    cd = os.path.dirname(__file__)\n    datadir = os.path.join(cd, 'evtx.d')\n    systempath = os.path.join(datadir, 'expected_output3.json')\n    with open(systempath, 'r') as f:\n        return json.load(f)",
+      "tar": "    const fs = require('fs');\n    const path = require('path');\n    const cd = path.dirname(__filename);\n    const datadir = path.join(cd, \"evtx.d\");\n    const systempath = path.join(datadir, \"expected_output3.json\");\n    const data = fs.readFileSync(systempath, \"utf-8\");\n    return JSON.parse(data);"
+    },
+    "_get_expected_output_4": {
+      "src": "    cd = os.path.dirname(__file__)\n    datadir = os.path.join(cd, 'evtx.d')\n    systempath = os.path.join(datadir, 'expected_output4.json')\n    with open(systempath, 'r') as f:\n        return json.load(f)",
+      "tar": "    const fs = require('fs');\n    const path = require('path');\n    const cd = path.dirname(__filename);\n    const datadir = path.join(cd, \"evtx.d\");\n    const systempath = path.join(datadir, \"expected_output4.json\");\n    const data = fs.readFileSync(systempath, \"utf-8\");\n    return JSON.parse(data);"
+    },
+    "_get_test_init_input": {
+      "src": "    cd = os.path.dirname(__file__)\n    datadir = os.path.join(cd, 'evtx.d')\n    input_path = os.path.join(datadir, input_name)\n    with open(input_path, 'rb') as f:\n        return f.read()",
+      "tar": "    const fs = require('fs');\n    const path = require('path');\n    const cd = path.dirname(__filename);\n    const datadir = path.join(cd, \"evtx.d\");\n    const input_path = path.join(datadir, input_name);\n    const data = fs.readFileSync(input_path);\n    return data;"
+    },
+    "parse_filetime": {
+      "src": "    if qword == 0:\n        return datetime.datetime.min\n    try:\n        return datetime.datetime.fromtimestamp(float(qword) * 1e-07 - 11644473600, datetime.timezone.utc)\n    except (ValueError, OSError):\n        return datetime.datetime.min",
+      "tar": "    if (qword === 0) {\n        return new Date(-8640000000000000);\n    }\n    try {\n        return new Date((qword * 1e-7 - 11644473600) * 1000);\n    } catch (e) {\n        return new Date(-8640000000000000);\n    }"
+    },
+    "chunks": {
+      "src": "        chunk_count = 1000000\n        if not include_inactive:\n            chunk_count = class_var.chunk_count()\n        i = 0\n        ofs = class_var._offset + class_var.header_chunk_size()\n        _return_chunks = []\n        while ofs + 65536 <= len(class_var._buf) and i < chunk_count:\n            _yield_value = ChunkHeader(class_var._buf, ofs)\n            _return_chunks.append(_yield_value)\n            ofs += 65536\n            i += 1\n        return _return_chunks",
+      "tar": "        var chunk_count = 1000000;\n        if (!include_inactive) {\n            chunk_count = class_var.chunk_count();\n        }\n        var i = 0;\n        var ofs = class_var._offset + class_var.header_chunk_size();\n        var _return_chunks = [];\n        while (ofs + 65536 <= class_var._buf.length && i < chunk_count) {\n            var _yield_value = new ChunkHeader(class_var._buf, ofs);\n            _return_chunks.push(_yield_value);\n            ofs += 65536;\n            i += 1;\n        }\n        return _return_chunks;"
+    },
+    "no_length_handler": {
+      "src": "            f = getattr(class_var, 'unpack_' + type)\n            return f(offset)",
+      "tar": "            var f = class_var[\"unpack_\" + type];\n            return f(offset);"
+    },
+    "explicit_length_handler": {
+      "src": "            f = getattr(class_var, 'unpack_' + type)\n            return f(offset, length)",
+      "tar": "            var f = class_var[\"unpack_\" + type];\n            return f(offset, length);"
+    },
+    "declare_field": {
+      "src": "        if offset is None:\n            offset = class_var._implicit_offset\n        if length is None:\n            setattr(class_var, name, no_length_handler)\n        else:\n            setattr(class_var, name, explicit_length_handler)\n        setattr(class_var, '_off_' + name, offset)\n        if type == 'byte' or type == 'int8':\n            class_var._implicit_offset = offset + 1\n        elif type == 'word' or type == 'word_be' or type == 'int16':\n            class_var._implicit_offset = offset + 2\n        elif type == 'dword' or type == 'dword_be' or type == 'int32' or type == 'float':\n            class_var._implicit_offset = offset + 4\n        elif type == 'qword' or type == 'int64' or type == 'double' or type == 'filetime' or type == 'systemtime':\n            class_var._implicit_offset = offset + 8\n        elif type == 'guid':\n            class_var._implicit_offset = offset + 16\n        elif type == 'binary':\n            class_var._implicit_offset = offset + length\n        elif type == 'string' and length is not None:\n            class_var._implicit_offset = offset + length\n        elif type == 'wstring' and length is not None:\n            class_var._implicit_offset = offset + 2 * length\n        elif 'string' in type and length is None:\n            raise ParseException('Implicit offset not supported for dynamic length strings')\n        else:\n            raise ParseException('Implicit offset not supported for type: {}'.format(type))",
+      "tar": "        if (offset === null) {\n            offset = class_var._implicit_offset;\n        }\n        if (length === null) {\n            class_var[name] = no_length_handler;\n        } else {\n            class_var[name] = explicit_length_handler;\n        }\n        class_var[\"_off_\" + name] = offset;\n        if (type === \"byte\" || type === \"int8\") {\n            class_var._implicit_offset = offset + 1;\n        } else if (type === \"word\" || type === \"word_be\" || type === \"int16\") {\n            class_var._implicit_offset = offset + 2;\n        } else if (type === \"dword\" || type === \"dword_be\" || type === \"int32\" || type === \"float\") {\n            class_var._implicit_offset = offset + 4;\n        } else if (type === \"qword\" || type === \"int64\" || type === \"double\" || type === \"filetime\" || type === \"systemtime\") {\n            class_var._implicit_offset = offset + 8;\n        } else if (type === \"guid\") {\n            class_var._implicit_offset = offset + 16;\n        } else if (type === \"binary\") {\n            class_var._implicit_offset = offset + length;\n        } else if (type === \"string\" && length !== null) {\n            class_var._implicit_offset = offset + length;\n        } else if (type === \"wstring\" && length !== null) {\n            class_var._implicit_offset = offset + (2 * length);\n        } else if (type.includes(\"string\") && length === null) {\n            throw new ParseException(\"Implicit offset not supported for dynamic length strings\");\n        } else {\n            throw new ParseException(\"Implicit offset not supported for type: \" + type);\n        }"
+    },
+    "unpack_qword": {
+      "src": "        o = class_var._offset + offset\n        try:\n            _retval = struct.unpack_from('<Q', class_var._buf, o)[0]\n            return _retval\n        except:\n            raise OverrunBufferException(o, len(class_var._buf))",
+      "tar": "        var o = class_var._offset + offset;\n        try {\n            var _retval = new DataView(class_var._buf.buffer, class_var._buf.byteOffset, class_var._buf.byteLength).getBigUint64(o, true);\n            if (_retval <= Number.MAX_SAFE_INTEGER) {\n                _retval = Number(_retval);\n            }\n            return _retval;\n        } catch {\n            throw new OverrunBufferException(o, class_var._buf.length);\n        }"
+    },
+    "rec": {
+      "src": "        if user_check_type(node, EndOfStreamNode):\n            pass\n        elif user_check_type(node, OpenStartElementNode):\n            acc.append('<')\n            acc.append(node.tag_name())\n            for child in node.children():\n                if user_check_type(child, AttributeNode):\n                    acc.append(' ')\n                    acc.append(validate_name(child.attribute_name().string()))\n                    acc.append('=\"')\n                    rec(child.attribute_value(), acc)\n                    acc.append('\"')\n            acc.append('>')\n            for child in node.children():\n                rec(child, acc)\n            acc.append('</')\n            acc.append(validate_name(node.tag_name()))\n            acc.append('>\\n')\n        elif user_check_type(node, CloseStartElementNode):\n            pass\n        elif user_check_type(node, CloseEmptyElementNode):\n            pass\n        elif user_check_type(node, CloseElementNode):\n            pass\n        elif user_check_type(node, ValueNode):\n            acc.append(escape_value(node.children()[0].string()))\n        elif user_check_type(node, AttributeNode):\n            pass\n        elif user_check_type(node, EntityReferenceNode):\n            acc.append(escape_value(node.entity_reference()))\n        elif user_check_type(node, TemplateInstanceNode):\n            raise UnexpectedElementException('TemplateInstanceNode')\n        elif user_check_type(node, NormalSubstitutionNode):\n            sub = subs[node.index()]\n            if user_check_type(sub, BXmlTypeNode):\n                sub = render_root_node(sub.root())\n            else:\n                sub = escape_value(sub.string())\n            acc.append(sub)\n        elif user_check_type(node, ConditionalSubstitutionNode):\n            sub = subs[node.index()]\n            if user_check_type(sub, BXmlTypeNode):\n                sub = render_root_node(sub.root())\n            else:\n                sub = escape_value(sub.string())\n            acc.append(sub)\n        elif user_check_type(node, StreamStartNode):\n            pass",
+      "tar": "        if (user_check_type(node, EndOfStreamNode)) {\n        } else if (user_check_type(node, OpenStartElementNode)) {\n            acc.push(\"<\");\n            acc.push(node.tag_name());\n            for (var child of node.children()) {\n                if (user_check_type(child, AttributeNode)) {\n                    acc.push(\" \");\n                    acc.push(validate_name(child.attribute_name().string()));\n                    acc.push('=\"');\n                    rec(child.attribute_value(), acc);\n                    acc.push('\"');\n                }\n            }\n            acc.push(\">\");\n            for (var child of node.children()) {\n                rec(child, acc);\n            }\n            acc.push(\"</\");\n            acc.push(validate_name(node.tag_name()));\n            acc.push(\">\\n\");\n        } else if (user_check_type(node, CloseStartElementNode)) {\n        } else if (user_check_type(node, CloseEmptyElementNode)) {\n        } else if (user_check_type(node, CloseElementNode)) {\n        } else if (user_check_type(node, ValueNode)) {\n            acc.push(escape_value(node.children()[0].string()));\n        } else if (user_check_type(node, AttributeNode)) {\n        } else if (user_check_type(node, EntityReferenceNode)) {\n            acc.push(escape_value(node.entity_reference()));\n        } else if (user_check_type(node, TemplateInstanceNode)) {\n            throw new UnexpectedElementException(\"TemplateInstanceNode\");\n        } else if (user_check_type(node, NormalSubstitutionNode)) {\n            var sub = subs[node.index()];\n            if (user_check_type(sub, BXmlTypeNode)) {\n                sub = render_root_node(sub.root());\n            } else {\n                sub = escape_value(sub.string());\n            }\n            acc.push(sub);\n        } else if (user_check_type(node, ConditionalSubstitutionNode)) {\n            var sub = subs[node.index()];\n            if (user_check_type(sub, BXmlTypeNode)) {\n                sub = render_root_node(sub.root());\n            } else {\n                sub = escape_value(sub.string());\n            }\n            acc.push(sub);\n        } else if (user_check_type(node, StreamStartNode)) {\n        }"
+    },
+    "string19": {
+      "src": "        binary = class_var.binary()\n        binaryString = binary.decode('utf16')\n        acc = []\n        while len(binaryString) > 0:\n            match = re.search('(?:[^\\x00].)+', binaryString)\n            if match:\n                frag = match.group(0)\n                acc.append('<string>')\n                acc.append(frag)\n                acc.append('</string>\\n')\n                binaryString = binaryString[len(frag) + 2:]\n                if len(binaryString) == 0:\n                    break\n            frag = re.search('(\\x00*)', binaryString).group(0)\n            if len(frag) % 2 == 0:\n                for i in range(len(frag) // 2):\n                    acc.append('<string></string>\\n')\n            else:\n                raise ParseException('Error parsing uneven substring of NULLs')\n            binaryString = binaryString[len(frag):]\n        _retval = ''.join(acc)\n        return _retval",
+      "tar": "        var binary = class_var.binary();\n        var binaryString = (new TextDecoder(\"utf-16\")).decode(binary);\n        var acc = [];\n        while (binaryString.length > 0) {\n            var match = binaryString.match(/(?:[^\\x00].)+/);\n            if (match) {\n                var frag = match[0];\n                acc.push(\"<string>\");\n                acc.push(frag);\n                acc.push(\"</string>\\n\");\n                binaryString = binaryString.substring(frag.length + 2);\n                if (binaryString.length === 0) {\n                    break;\n                }\n            }\n            frag = binaryString.match(/(\\x00*)/)[0];\n            if (frag.length % 2 === 0) {\n                for (var i = 0; i < frag.length / 2; i++) {\n                    acc.push(\"<string></string>\\n\");\n                }\n            } else {\n                throw new ParseException(\"Error parsing uneven substring of NULLs\");\n            }\n            binaryString = binaryString.slice(frag.length);\n        }\n        var _retval = acc.join(\"\");\n        return _retval;"
+    },
+    "_load_strings": {
+      "src": "        if class_var._strings is None:\n            class_var._strings = {}\n        for i in range(64):\n            ofs = class_var.unpack_dword(128 + i * 4)\n            while ofs > 0:\n                string_node = class_var.add_string(ofs, None)\n                ofs = string_node.next_offset()",
+      "tar": "        if (class_var._strings === null) {\n            class_var._strings = {};\n        }\n        for (var i = 0; i < 64; i++) {\n            var ofs = class_var.unpack_dword(128 + (i * 4));\n            while (ofs > 0) {\n                var string_node = class_var.add_string(ofs, null);\n                ofs = string_node.next_offset();\n            }\n        }"
+    },
+    "add_string": {
+      "src": "        if class_var._strings is None:\n            class_var._load_strings()\n        string_node = NameStringNode(class_var._buf, class_var._offset + offset, class_var, parent or class_var)\n        class_var._strings[offset] = string_node\n        return string_node",
+      "tar": "        if (class_var._strings === null) {\n            class_var._load_strings();\n        }\n        var string_node = new NameStringNode(class_var._buf, class_var._offset + offset, class_var, parent || class_var);\n        class_var._strings[offset] = string_node;\n        return string_node;"
+    },
+    "_load_templates": {
+      "src": "        if class_var._templates is None:\n            class_var._templates = {}\n        for i in range(32):\n            ofs = class_var.unpack_dword(384 + i * 4)\n            while ofs > 0:\n                token = class_var.unpack_byte(ofs - 10)\n                pointer = class_var.unpack_dword(ofs - 4)\n                if token != 12 or pointer != ofs:\n                    ofs = 0\n                    continue\n                template = class_var.add_template(ofs, None)\n                ofs = template.next_offset()",
+      "tar": "        if (class_var._templates === null) {\n            class_var._templates = {};\n        }\n        for (var i = 0; i < 32; i++) {\n            var ofs = class_var.unpack_dword(384 + (i * 4));\n            while (ofs > 0) {\n                var token = class_var.unpack_byte(ofs - 10);\n                var pointer = class_var.unpack_dword(ofs - 4);\n                if (token !== 12 || pointer !== ofs) {\n                    ofs = 0;\n                    continue;\n                }\n                var template = class_var.add_template(ofs, null);\n                ofs = template.next_offset();\n            }\n        }"
+    },
+    "add_template": {
+      "src": "        if class_var._templates is None:\n            class_var._load_templates()\n        node = TemplateNode(class_var._buf, class_var._offset + offset, class_var, parent or class_var)\n        class_var._templates[offset] = node\n        return node",
+      "tar": "        if (class_var._templates === null) {\n            class_var._load_templates();\n        }\n        var node = new TemplateNode(class_var._buf, class_var._offset + offset, class_var, parent || class_var);\n        class_var._templates[offset] = node;\n        return node;"
+    },
+    "records": {
+      "src": "        result = []\n        try:\n            record = class_var.first_record()\n        except InvalidRecordException:\n            return result\n        while record._offset < class_var._offset + class_var.next_record_offset() and record.length() > 0:\n            result.append(record)\n            try:\n                record = Record(class_var._buf, record._offset + record.length(), class_var)\n            except InvalidRecordException:\n                return result\n        return result",
+      "tar": "        var result = [];\n        try {\n            var record = class_var.first_record();\n        } catch (e) {\n            if (e instanceof InvalidRecordException) {\n                return result;\n            }\n        }\n        while (record._offset < class_var._offset + class_var.next_record_offset() && record.length() > 0) {\n            result.push(record);\n            try {\n                record = new Record(class_var._buf, record._offset + record.length(), class_var);\n            } catch (e) {\n                if (e instanceof InvalidRecordException) {\n                    return result;\n                }\n            }\n        }\n        return result;"
+    },
+    "find_end_of_stream1": {
+      "src": "        for child in class_var.children():\n            if user_check_type(child, EndOfStreamNode):\n                return child\n            ret = child.find_end_of_stream()\n            if ret:\n                return ret\n        return None",
+      "tar": "        for (var child of class_var.children()) {\n            if (user_check_type(child, EndOfStreamNode)) {\n                return child;\n            }\n            var ret = child.find_end_of_stream();\n            if (ret) {\n                return ret;\n            }\n        }\n        return null;"
+    },
+    "__init__18": {
+      "src": "        class_var.declare_field('byte', 'token', 0, None)\n        class_var.declare_field('byte', 'unknown0', None, None)\n        class_var.declare_field('dword', 'template_id', None, None)\n        class_var.declare_field('dword', 'template_offset', None, None)\n        class_var._data_length = 0\n        if class_var.is_resident_template():\n            new_template = class_var._chunk.add_template(class_var.template_offset(), class_var)\n            class_var._data_length += new_template.length()",
+      "tar": "        class_var.declare_field(\"byte\", \"token\", 0, null);\n        class_var.declare_field(\"byte\", \"unknown0\", null, null);\n        class_var.declare_field(\"dword\", \"template_id\", null, null);\n        class_var.declare_field(\"dword\", \"template_offset\", null, null);\n        class_var._data_length = 0;\n        if (class_var.is_resident_template()) {\n            var new_template = class_var._chunk.add_template(class_var.template_offset(), class_var);\n            class_var._data_length += new_template.length();\n        }"
+    },
+    "_extract_structure": {
+      "src": "    name = node._class_name.split(';')[0]\n    value = None\n    if user_check_type(node, BXmlTypeNode):\n        value = None\n    elif user_check_type(node, VariantTypeNode):\n        value = node.string()\n    elif user_check_type(node, OpenStartElementNode):\n        value = node.tag_name()\n    elif user_check_type(node, AttributeNode):\n        value = node.attribute_name().string()\n    else:\n        value = None\n    children = []\n    if user_check_type(node, BXmlTypeNode):\n        children.append(_extract_structure(node._root))\n    elif user_check_type(node, TemplateInstanceNode) and node.is_resident_template():\n        children.append(_extract_structure(node.template()))\n    children.extend(list(map(_extract_structure, node.children())))\n    if user_check_type(node, RootNode):\n        substitutions = list(map(_extract_structure, node.substitutions()))\n        children.append(['Substitutions', None, substitutions])\n    if len(children) > 0:\n        _retval = [name, value, children]\n        return _retval\n    elif value is not None:\n        _retval = [name, value]\n        return _retval\n    else:\n        _retval = [name]\n        return _retval",
+      "tar": "    var name = node._class_name.split(\";\")[0];\n    var value = null;\n    if (user_check_type(node, BXmlTypeNode)) {\n        value = null;\n    } else if (user_check_type(node, VariantTypeNode)) {\n        value = node.string();\n    } else if (user_check_type(node, OpenStartElementNode)) {\n        value = node.tag_name();\n    } else if (user_check_type(node, AttributeNode)) {\n        value = node.attribute_name().string();\n    } else {\n        value = null;\n    }\n    var children = [];\n    if (user_check_type(node, BXmlTypeNode)) {\n        children.push(_extract_structure(node._root));\n    } else if (user_check_type(node, TemplateInstanceNode) && node.is_resident_template()) {\n        children.push(_extract_structure(node.template()));\n    }\n    children = children.concat(Array.from(node.children()).map(child => _extract_structure(child)));\n    if (user_check_type(node, RootNode)) {\n        var substitutions = Array.from(node.substitutions()).map(substitution => _extract_structure(substitution));\n        children.push([\"Substitutions\", null, substitutions]);\n    }\n    if (children.length > 0) {\n        var _retval = [name, value, children];\n        return _retval;\n    } else if (value !== null) {\n        var _retval = [name, value];\n        return _retval;\n    } else {\n        var _retval = [name];\n        return _retval;\n    }"
+    },
+    "template1": {
+      "src": "        _retval = class_var._chunk.templates()[class_var.template_offset()]\n        return _retval",
+      "tar": "        var _retval = class_var._chunk.templates()[class_var.template_offset()];\n        return _retval;"
+    },
+    "templates": {
+      "src": "        if not class_var._templates:\n            class_var._load_templates()\n        _retval = class_var._templates\n        return _retval",
+      "tar": "        if (!class_var._templates) {\n            class_var._load_templates();\n        }\n        var _retval = class_var._templates;\n        return _retval;"
+    },
+    "children1": {
+      "src": "        _retval = class_var._children(None, [EndOfStreamToken])\n        return _retval",
+      "tar": "        var _retval = class_var._children(null, [EndOfStreamToken]);\n        return _retval;"
+    },
+    "OpenStartElementNode": {
+      "src": "    class_var = BXmlNode(pbuf, poffset, pchunk, pparent)\n    class_var._class_name = 'OpenStartElementNode;' + class_var._class_name\n    tag_name = memoize(tag_name, class_var)\n    children3 = memoize(children3, class_var)\n    class_var.__init__ = __init__10\n    class_var.flags = flags1\n    class_var.tag_name = tag_name\n    class_var.tag_length = tag_length3\n    class_var.children = children3\n    __init__10(pbuf, poffset, pchunk, pparent)\n    return class_var",
+      "tar": "    var class_var = BXmlNode(pbuf, poffset, pchunk, pparent);\n    class_var._class_name = 'OpenStartElementNode;' + class_var._class_name;\n    tag_name = memoize(tag_name, class_var);\n    children3 = memoize(children3, class_var);\n    class_var.__init__ = __init__10;\n    class_var.flags = flags1;\n    class_var.tag_name = tag_name;\n    class_var.tag_length = tag_length3;\n    class_var.children = children3;\n    __init__10(pbuf, poffset, pchunk, pparent);\n    return class_var;"
+    },
+    "__init__10": {
+      "src": "        class_var.declare_field('byte', 'token', 0, None)\n        class_var.declare_field('word', 'unknown0', None, None)\n        class_var.declare_field('dword', 'size', None, None)\n        class_var.declare_field('dword', 'string_offset', None, None)\n        class_var._tag_length = 11\n        class_var._element_type = 0\n        if class_var.flags() & 4:\n            class_var._tag_length += 4\n        if class_var.string_offset() > class_var.offset() - class_var._chunk._offset:\n            new_string = class_var._chunk.add_string(class_var.string_offset(), class_var)\n            class_var._tag_length += new_string.length()",
+      "tar": "        class_var.declare_field(\"byte\", \"token\", 0, null);\n        class_var.declare_field(\"word\", \"unknown0\", null, null);\n        class_var.declare_field(\"dword\", \"size\", null, null);\n        class_var.declare_field(\"dword\", \"string_offset\", null, null);\n        class_var._tag_length = 11;\n        class_var._element_type = 0;\n        if (class_var.flags() & 4) {\n            class_var._tag_length += 4;\n        }\n        if (class_var.string_offset() > class_var.offset() - class_var._chunk._offset) {\n            var new_string = class_var._chunk.add_string(class_var.string_offset(), class_var);\n            class_var._tag_length += new_string.length();\n        }"
+    },
+    "flags1": {
+      "src": "        _retval = class_var.token() >> 4\n        return _retval",
+      "tar": "        var _retval = class_var.token() >> 4;\n        return _retval;"
+    },
+    "children3": {
+      "src": "        _retval = class_var._children(None, [CloseElementToken, CloseEmptyElementToken])\n        return _retval",
+      "tar": "        var _retval = class_var._children(null, [CloseElementToken, CloseEmptyElementToken]);\n        return _retval;"
+    },
+    "tag_length3": {
+      "src": "        _retval = class_var._tag_length\n        return _retval",
+      "tar": "        var _retval = class_var._tag_length;\n        return _retval;"
+    },
+    "__init__15": {
+      "src": "        class_var.declare_field('byte', 'token', 0, None)\n        class_var.declare_field('dword', 'string_offset', None, None)\n        class_var._name_string_length = 0\n        if class_var.string_offset() > class_var.offset() - class_var._chunk._offset:\n            new_string = class_var._chunk.add_string(class_var.string_offset(), class_var)\n            class_var._name_string_length += new_string.length()",
+      "tar": "        class_var.declare_field(\"byte\", \"token\", 0, null);\n        class_var.declare_field(\"dword\", \"string_offset\", null, null);\n        class_var._name_string_length = 0;\n        if (class_var.string_offset() > class_var.offset() - class_var._chunk._offset) {\n            var new_string = class_var._chunk.add_string(class_var.string_offset(), class_var);\n            class_var._name_string_length += new_string.length();\n        }"
+    },
+    "AttributeNode": {
+      "src": "    class_var = BXmlNode(pbuf, poffset, pchunk, pparent)\n    class_var._class_name = 'AttributeNode;' + class_var._class_name\n    children8 = memoize(children8, class_var)\n    class_var.__init__ = __init__15\n    class_var.attribute_name = attribute_name\n    class_var.attribute_value = attribute_value\n    class_var.tag_length = tag_length5\n    class_var.children = children8\n    __init__15(pbuf, poffset, pchunk, pparent)\n    return class_var",
+      "tar": "    var class_var = BXmlNode(pbuf, poffset, pchunk, pparent);\n    class_var._class_name = 'AttributeNode;' + class_var._class_name;\n    children8 = memoize(children8, class_var);\n    class_var.__init__ = __init__15;\n    class_var.attribute_name = attribute_name;\n    class_var.attribute_value = attribute_value;\n    class_var.tag_length = tag_length5;\n    class_var.children = children8;\n    __init__15(pbuf, poffset, pchunk, pparent);\n    return class_var;"
+    },
+    "children8": {
+      "src": "        _retval = class_var._children(1, [EndOfStreamToken])\n        return _retval",
+      "tar": "        var _retval = class_var._children(1, [EndOfStreamToken]);\n        return _retval;"
+    },
+    "tag_length5": {
+      "src": "        _retval = 5 + class_var._name_string_length\n        return _retval",
+      "tar": "        var _retval = 5 + class_var._name_string_length;\n        return _retval;"
+    },
+    "attribute_name": {
+      "src": "        _retval = class_var._chunk.strings()[class_var.string_offset()]\n        return _retval",
+      "tar": "        var _retval = class_var._chunk.strings()[class_var.string_offset()];\n        return _retval;"
+    },
+    "substitutions": {
+      "src": "        sub_decl = []\n        sub_def = []\n        ofs = class_var.tag_and_children_length()\n        sub_count = class_var.unpack_dword(ofs)\n        ofs += 4\n        for i in range(sub_count):\n            size = class_var.unpack_word(ofs)\n            type_ = class_var.unpack_byte(ofs + 2)\n            sub_decl.append((size, type_))\n            ofs += 4\n        for index in range(len(sub_decl)):\n            size = sub_decl[index][0]\n            type_ = sub_decl[index][1]\n            val = get_variant_value(class_var._buf, class_var.offset() + ofs, class_var._chunk, class_var, type_, size)\n            if abs(size - val.length()) > 4:\n                raise ParseException('Invalid substitution value size')\n            sub_def.append(val)\n            ofs += size\n        return sub_def",
+      "tar": "        var sub_decl = [];\n        var sub_def = [];\n        var ofs = class_var.tag_and_children_length();\n        var sub_count = class_var.unpack_dword(ofs);\n        ofs += 4;\n        for (var i = 0; i < sub_count; i++) {\n            var size = class_var.unpack_word(ofs);\n            var type_ = class_var.unpack_byte(ofs + 2);\n            sub_decl.push([size, type_]);\n            ofs += 4;\n        }\n        for (var index = 0; index < sub_decl.length; index++) {\n            var size = sub_decl[index][0];\n            var type_ = sub_decl[index][1];\n            var val = get_variant_value(class_var._buf, class_var.offset() + ofs, class_var._chunk, class_var, type_, size);\n            if (Math.abs(size - val.length()) > 4) {\n                throw new ParseException(\"Invalid substitution value size\");\n            }\n            sub_def.push(val);\n            ofs += size;\n        }\n        return sub_def;"
+    },
+    "tag_and_children_length": {
+      "src": "        children_length = 0\n        for child in class_var.children():\n            children_length += child.length()\n        _retval = class_var.tag_length() + children_length\n        return _retval",
+      "tar": "        var children_length = 0;\n        for (var child of class_var.children()) {\n            children_length += child.length();\n        }\n        var _retval = class_var.tag_length() + children_length;\n        return _retval;"
+    },
+    "_children": {
+      "src": "        ret = []\n        ofs = class_var.tag_length()\n        gen = user_infinite_counter()\n        if max_children:\n            gen = list(range(max_children))\n        for _ in gen:\n            token = class_var.unpack_byte(ofs) & 15\n            HandlerNodeClass = NODE_DISPATCH_TABLE[token]\n            child = HandlerNodeClass(class_var._buf, class_var.offset() + ofs, class_var._chunk, class_var)\n            ret.append(child)\n            ofs += child.length()\n            if token in end_tokens:\n                break\n            if child.find_end_of_stream():\n                break\n        return ret",
+      "tar": "        var ret = [];\n        var ofs = class_var.tag_length();\n        var gen = user_infinite_counter();\n        if (max_children !== null) {\n            gen = Array.from({ length: max_children }, (_, i) => i);\n        }\n        for (var _ of gen) {\n            var token = class_var.unpack_byte(ofs) & 15;\n            var HandlerNodeClass = NODE_DISPATCH_TABLE[token];\n            var child = new HandlerNodeClass(class_var._buf, class_var.offset() + ofs, class_var._chunk, class_var);\n            ret.push(child);\n            ofs += child.length();\n            if (end_tokens.includes(token)) {\n                break;\n            }\n            if (child.find_end_of_stream()) {\n                break;\n            }\n        }\n        return ret;"
+    },
+    "find_end_of_stream2": {
+      "src": "        _retval = class_var.template().find_end_of_stream()\n        return _retval",
+      "tar": "        var _retval = class_var.template().find_end_of_stream();\n        return _retval;"
+    },
+    "template_instance": {
+      "src": "        ofs = class_var.offset()\n        if class_var.unpack_byte(0) & 15 == 15:\n            ofs += 4\n        _retval = TemplateInstanceNode(class_var._buf, ofs, class_var._chunk, class_var)\n        return _retval",
+      "tar": "        var ofs = class_var.offset();\n        if ((class_var.unpack_byte(0) & 15) === 15) {\n            ofs += 4;\n        }\n        var _retval = new TemplateInstanceNode(class_var._buf, ofs, class_var._chunk, class_var);\n        return _retval;"
+    },
+    "template2": {
+      "src": "        instance = class_var.template_instance()\n        offset = class_var._chunk.offset() + instance.template_offset()\n        node = TemplateNode(class_var._buf, offset, class_var._chunk, instance)\n        return node",
+      "tar": "        var instance = class_var.template_instance();\n        var offset = class_var._chunk.offset() + instance.template_offset();\n        var node = new TemplateNode(class_var._buf, offset, class_var._chunk, instance);\n        return node;"
+    },
+    "render_root_node": {
+      "src": "    subs = []\n    for sub in root_node.substitutions():\n        if user_check_type(sub, \"string\"):\n            raise Exception('string sub?')\n        if sub is None:\n            raise Exception('null sub?')\n        subs.append(sub)\n    _retval = render_root_node_with_subs(root_node, subs)\n    return _retval",
+      "tar": "    var subs = [];\n    for (var sub of root_node.substitutions()) {\n        if (user_check_type(sub, \"string\")) {\n            throw new Error(\"string sub?\");\n        }\n        if (sub === null) {\n            throw new Error(\"null sub?\");\n        }\n        subs.push(sub);\n    }\n    var _retval = render_root_node_with_subs(root_node, subs);\n    return _retval;"
+    }
+  },
+  "learn_overfitted_rules_stat_nids": [],
+  "learn_overfitted_rules_simple_ntexts": [
+    "_retval = '{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}'.format(h[3], h[2], h[1], h[0], h[5], h[4], h[7], h[6], h[8], h[9], h[10], h[11], h[12], h[13], h[14], h[15])",
+    "_retval = ''.encode('ascii')",
+    "_retval = class_var.magic() == 'ElfChnk\\x00'",
+    "_retval = class_var.unpack_binary(offset, length).decode('ascii')",
+    "_retval = struct.unpack_from('<B', class_var._buf, o)[0]",
+    "_retval = struct.unpack_from('<H', class_var._buf, o)[0]",
+    "_retval = struct.unpack_from('>H', class_var._buf, o)[0]",
+    "_retval = struct.unpack_from('>I', class_var._buf, o)[0]",
+    "_retval = struct.unpack_from('<I', class_var._buf, o)[0]",
+    "_retval = struct.unpack_from('<i', class_var._buf, o)[0]",
+    "_retval = struct.unpack_from('<{}s'.format(length), class_var._buf, o)[0]",
+    "_retval = bytes(class_var._buf[start:end]).decode('utf16')",
+    "_bin = bytes(class_var._buf[o:o + 16])",
+    "data = class_var.unpack_binary(0, 120) + class_var.unpack_binary(128, 384)",
+    "_retval = crc32(data) & 4294967295",
+    "_retval = crc32(buffer) & 4294967295",
+    "_retval = tmp_f(*args[1:])",
+    "_retval = __call__(decorated_object, *args)",
+    "__call__(decorated_object, *args)",
+    "----------------------------------------------------------- ALL OF THE ABOVE IS CHECKED",
+    "_retval = class_var.template_offset() > class_var.offset() - class_var._chunk._offset",
+    "_retval = RootNode(class_var._buf, class_var._offset + 24, class_var._chunk, class_var)",
+    "chunk = fh.chunks(False)[0]",
+    "record = chunk.records()[0]",
+    "if fh.calculate_checksum() != fh.checksum():",
+    "if chunk.log_last_record_number() != expected_output2['end_log']:",
+    "if chunk.log_first_record_number() != expected_output2['start_log']:",
+    "if chunk.file_last_record_number() != expected_output2['end_file']:",
+    "if chunk.file_first_record_number() != expected_output2['start_file']:",
+    "if chunk.log_last_record_number() != expected_output1['end_log']:",
+    "if chunk.log_first_record_number() != expected_output1['start_log']:",
+    "if chunk.file_last_record_number() != expected_output1['end_file']:",
+    "if chunk.file_first_record_number() != expected_output1['start_file']:",
+    "if chunk.calculate_data_checksum() != chunk.data_checksum():",
+    "data = class_var.unpack_binary(512, class_var.next_record_offset() - 512)",
+    "if chunk.calculate_header_checksum() != chunk.header_checksum():",
+    "if not chunk.check_magic():",
+    "if chunk.magic() != 'ElfChnk\\x00':",
+    "_retval = class_var._length or class_var._root.length()",
+    "_retval = class_var._children(None, [EndOfStreamToken,])",
+    "child = HandlerNodeClass(class_var._buf, class_var.offset() + ofs, class_var._chunk, class_var)",
+    "token = class_var.unpack_byte(ofs) & 15",
+    "if json.dumps(_extract_structure(record.root())) != json.dumps(expected_output3):",
+    "if json.dumps(xml) != json.dumps(expected_output4):",
+    "class_var.declare_field('binary', 'binary', None, class_var.binary_length())",
+    "ret.append(child)",
+    "class_var.declare_field('wstring', '_string', None, class_var.string_length())",
+    "class_var.declare_field('wstring', '_string', 0, class_var._length // 2)",
+    "gen = list(range(max_children))",
+    "if class_var.size() > 65536:",
+    "inp = _get_test_init_input('record-2.evtx')",
+    "inp = _get_test_init_input('empty.evtx')",
+    "obj = ChunkHeader(inp, 0)",
+    "if not class_var._strings:",
+    "class_var._class_name = 'ChunkHeader;' + class_var._class_name",
+    "_retval = Record(class_var._buf, class_var._offset + 512, class_var)",
+    "class_var._class_name = 'RootNode;' + class_var._class_name",
+    "obj._children(1, [0x00])",
+    "_retval = class_var.string_length() * 2 + 8",
+    "_retval = 2 + class_var.string_length() * 2",
+    "_retval = class_var.token() >> 4",
+    "child = get_variant_value(class_var._buf, class_var.offset() + class_var.tag_length(), class_var._chunk, class_var, class_var.type(), None)",
+    "class_var.declare_field('wstring', 'string', None, class_var.string_length())",
+    "class_var._class_name = 'NormalSubstitutionNode;' + class_var._class_name",
+    "class_var = BXmlNode(pbuf, poffset, pchunk, pparent)",
+    "class_var._class_name = 'ConditionalSubstitutionNode;' + class_var._class_name",
+    "class_var._class_name = 'StreamStartNode;' + class_var._class_name",
+    "class_var._class_name = 'CharacterReferenceNode;' + class_var._class_name",
+    "class_var._class_name = 'Record;' + class_var._class_name",
+    "_retval = class_var.tag_length() + 0",
+    "inp = _get_test_init_input('record-1.evtx')",
+    "class_var.declare_field('dword', 'size2', class_var.size() - 4, None)",
+    "ofs = class_var.unpack_dword(128 + i * 4)",
+    "string_node = NameStringNode(class_var._buf, class_var._offset + offset, class_var, parent or class_var)",
+    "_mem_retval = cache[class_var]",
+    "_retval = '{' + class_var.guid() + '}'",
+    "_retval = 2 + class_var.binary_length()",
+    "o = class_var._offset + offset",
+    "binaryString = binary.decode('utf16')",
+    "ret += '{:02x}'.format(b[i])",
+    "b = class_var.hex()[::-1]",
+    "ret += '-{}'.format(elem)",
+    "ret.append(class_var.unpack_dword(class_var.current_field_offset() + 4 * i))",
+    "_retval = 8 + 4 * class_var.num_elements()",
+    "match = re.search('(?:[^\\x00].)+', binaryString)",
+    "if class_var not in cache:",
+    "obj.__cache = {}",
+    "cache[class_var] = class_var.func(*args)",
+    "_retval = class_var.flags() & 1 == 1",
+    "_retval = base64.b64encode(class_var.binary()).decode('ascii')",
+    "ret = 'S-{}-{}'.format(class_var.version(), class_var.id_high() << 16 ^ class_var.id_low())",
+    "esc = re.sub(r'[\\u0080-\\uFFFF]', lambda m: f'&#{ord(m.group(0))};', esc)",
+    "_retval = class_var.check_magic() and class_var.major_version() == 3 and (class_var.minor_version() == 1) and (class_var.header_chunk_size() == 4096) and (class_var.checksum() == class_var.calculate_checksum())",
+    "chunk_count = class_var.chunk_count()",
+    "_retval = str(class_var.qword())",
+    "expected_output2 = {'start_file': 1, 'end_file': 91, 'start_log': 1, 'end_log': 91}",
+    "_retval = str(class_var.byte())",
+    "_retval = class_var.flags() & 2 == 2",
+    "_retval = str(class_var.dword())",
+    "test()",
+    "class_var._implicit_offset = offset + 8",
+    "offset = class_var._implicit_offset",
+    "return node",
+    "expected_output1 = {'start_file': 1, 'end_file': 153, 'start_log': 12049, 'end_log': 12201}",
+    "class_var._implicit_offset = offset + length",
+    "h.append(_bin[i])",
+    "chunks = list(fh.chunks(False))",
+    "result.append(record)",
+    "_retval = str(class_var.word())",
+    "_retval = class_var._buf[class_var.offset():class_var.offset() + class_var.size()]",
+    "acc.append('</string>\\n')",
+    "_retval = '&#x%04x;' % class_var.entity()",
+    "types = {NULL: NullTypeNode, WSTRING: WstringTypeNode, UNSIGNED_BYTE: UnsignedByteTypeNode, UNSIGNED_WORD: UnsignedWordTypeNode, UNSIGNED_DWORD: UnsignedDwordTypeNode, UNSIGNED_QWORD: UnsignedQwordTypeNode, FLOAT: FloatTypeNode, DOUBLE: DoubleTypeNode, BOOLEAN: BooleanTypeNode, BINARY: BinaryTypeNode, GUID: GuidTypeNode, SIZE: SizeTypeNode, FILETIME: FiletimeTypeNode, SYSTEMTIME: SystemtimeTypeNode, SID: SIDTypeNode, HEX32: Hex32TypeNode, HEX64: Hex64TypeNode, BXML: BXmlTypeNode, WSTRINGARRAY: WstringArrayTypeNode}",
+    "TypeClass = types[type_]",
+    "class_var._strings[offset] = string_node",
+    "class_var._strings = {}",
+    "_retval = ''.join(acc)",
+    "binaryString = binaryString[len(frag) + 2:]",
+    "acc.append('<string>')",
+    "frag = match.group(0)",
+    "acc.append(frag)"
+  ]
+}

@@ -1,0 +1,25 @@
+def test():
+  "--- test function ---"
+  param =[(55,),(35,),(24,),(75,),(5,),(7,),(50,),(28,),(67,),(59,),(3,),(9,),(15,)]
+  for i, parameters_set in enumerate(param):
+    idx = i
+    result = f_gold(* parameters_set)
+"-----------------"
+def f_gold(n):
+    if n < 4:
+        return -1
+    rem = n % 4
+    if rem == 0:
+        return n // 4
+    if rem == 1:
+        if n < 9:
+            return -1
+        return (n - 9) // 4 + 1
+    if rem == 2:
+        return (n - 6) // 4 + 1
+    else:
+        if n < 15:
+            return -1
+        return (n - 15) // 4 + 2
+"-----------------"
+test()

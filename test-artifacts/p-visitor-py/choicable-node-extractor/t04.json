@@ -1,0 +1,11 @@
+{
+  "code": "for i in range(len(al)):\n    if al[i] == '[':\n        openarr += 1\n    elif al[i] == ']':\n        openarr -= 1",
+  "choicable_nodes": [
+    "al",
+    "al[i] == '['",
+    "1",
+    "al[i] == ']'",
+    "1"
+  ],
+  "exclude_stat_nids": []
+}

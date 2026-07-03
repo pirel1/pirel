@@ -1,0 +1,11 @@
+YOUR OUTPUT SHOULD BE AS FOLLOWS:
+{% if not use_reduced_prompts %}
+{# include 'output-description/step-by-step-explanation.j2' #}
+{% include 'output-description/all-possible-tar-snippets.j2' %}
+{% include 'output-description/ordering-multiple-translated-snippets.j2' %}
+{% include 'output-description/placing-each-translation-in-triple-backticks.j2' %}
+{% include 'output-description/no-comments-in-code-blocks.j2' %}
+{% include 'output-description/single-statement-in-translation.j2' %}
+{% else %}
+{% include 'output-description/ordering-multiple-translated-snippets.j2' %}
+{% endif %}

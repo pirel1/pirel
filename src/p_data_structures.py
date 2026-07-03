@@ -1,0 +1,1948 @@
+'''
+Module that contains data structures for manipulating DuoGlot-style and Pirel-style AST's.
+
+These classes are used for:
+- template generation and manipulation.
+- checking whether LLM generated programs conform provided templates.
+
+These classes are not used for manipulating translation rules.
+For manipulating translation rules, classes in p_rule_postprocessor.py are used.
+p_rule_postprocessor.py data structures are a bit different than DuoGlot-style AST's.
+'''
+
+import json
+import re
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+
+import d_ast_parse
+import d_grammar_dlmparser as gdp
+import p_utils
+import p_visitor_py as pvpy
+
+
+logger = p_utils.setup_logger(__name__)
+
+
+# ERROR CLASSES
+class TreeConstructionError(Exception):
+  '''
+  This is an error that is thrown when the input AST
+  for DuoGlotTree or PirelTree contains an ERROR
+  node after being parsed by TreeSitter.
+  '''
+  def __init__(self, *args: object) -> None:
+    super().__init__(*args)
+
+
+# DUOGLOT-STYLE AST
+class DuoGlotTree:
+  '''
+  Tree for DuoGlot-style AST
+  '''
+  def __init__(self, full_ast) -> None:
+    '''
+    `full_ast`: AST as parsed by d_ast_parse.parse_text()
+    Raises TreeConstructionError.
+    '''
+    self.full_ast = full_ast
+    root_node_type, root_node_id, children_ast = self._parse_ast(full_ast)
+    self.root_node = NTNode(root_node_type, None, root_node_id)
+    for child_ast in children_ast:
+      self._rec_construct_at(self.root_node, child_ast)
+
+  def _parse_ast(self, ast: list) -> Tuple[str, int, list]:
+    '''
+    Given a DuoGlot-style AST, parse it and return
+    node_type, node_id, children_ast as a tuple.
+
+    ["py.module", 0, ["py.return_statement", 1, "\"return\"", [...] ] ]
+    '''
+    node_type, node_id, children_ast = ast[0], ast[1], ast[2:]
+    parts = node_type.split('.')
+    assert len(parts) == 2, 'node types in "ast" should be of the form "<lang>.<node_type_in_lang>"'
+    if parts[1] == 'ERROR':
+      raise TreeConstructionError('cannot construct a tree with error nodes')
+    return (node_type, node_id, children_ast)
+
+  def _is_annotated_node(self, ast: Union[list, str]) -> bool:
+    '''
+    Some nodes such as string are annotated with extra information.
+
+    ["py.string", 2,
+      ["anno", ["\"stype\"", "\"\""], ["\"quote\"", "\"'\""]],
+      "\"\\\"\"",
+      "\"\\\"\""
+    ]
+    '''
+    # terminal node
+    if isinstance(ast, str):
+      return False
+    _, _, children_ast = self._parse_ast(ast)
+    if len(children_ast) == 0:
+      return False
+    first_child = children_ast[0]  # annotation node
+    if not isinstance(first_child, list):
+      return False
+    if first_child[0] == 'anno':
+      return True
+    return False
+
+  def _rec_construct_at(self, parent_node: 'NTNode', ast: Union[list, str]) -> None:
+    # base case: terminal node
+    if isinstance(ast, str):
+      node_type = json.loads(ast)  # json.dumps() is used in d_ast_parse.parse_text_dbg()
+      node = TNode(node_type, parent_node)
+      parent_node.add_child(node)
+      return
+    # base case: annotated non-terminal node
+    if self._is_annotated_node(ast):
+      node_type, node_id, children_ast = self._parse_ast(ast)
+      annotation, actual_children = children_ast[0], children_ast[1:]
+      node = AnnotatedNTNode(node_type, parent_node, node_id, annotation)
+      parent_node.add_child(node)
+      # recurse children
+      for ast_child in actual_children:
+        self._rec_construct_at(node, ast_child)
+      return
+    # non-terminal node
+    node_type, node_id, children_ast = self._parse_ast(ast)
+    node = NTNode(node_type, parent_node, node_id)
+    parent_node.add_child(node)
+    # recurse children
+    for ast_child in children_ast:
+      self._rec_construct_at(node, ast_child)
+
+  def __str__(self) -> str:
+    return str(self.tree_as_list())
+
+  def _pre_order(self, start_node: 'DuoGlotNode', visit_fn: Callable) -> None:
+    def _rec_pre_order(node: 'DuoGlotNode', visit_fn: Callable):
+      visit_fn(node)
+      for child in node.get_children():
+        _rec_pre_order(child, visit_fn)
+    _rec_pre_order(start_node, visit_fn)
+
+  def get_root_node(self):
+    return self.root_node
+
+  def get_node_with_id(self, node_id: int) -> Union['DuoGlotNode', None]:
+    '''
+    RETURN None if `node_id` is not found.
+    '''
+    def _rec_search(node: DuoGlotNode, node_id: int) -> Union[DuoGlotNode, None]:
+      if node.is_terminal():
+        return None
+      if node.get_id() == node_id:
+        return node
+      for child in node.get_children():
+        child_res = _rec_search(child, node_id)
+        if child_res is not None:
+          return child_res
+      return None
+    return _rec_search(self.root_node, node_id)
+
+  def get_terminal_tokens_at(self, node_id: int) -> List[str]:
+    '''
+    Given a node_id that belongs to the tree,
+    return a list of terminal tokens in pre-order traversal.
+
+    NOTE this method is used in s_llm_code_post_process module
+    '''
+    tokens = []
+    def _visit_collect_tokens(node: 'DuoGlotNode'):
+      nonlocal tokens
+      if node.is_terminal():
+        tokens.append(node.get_type())
+    node = self.get_node_with_id(node_id)
+    # sanity check
+    assert node is not None, f'{node_id} does not belong to the tree\nTree:\n{self.debug_str()}'
+    self._pre_order(node, _visit_collect_tokens)
+    return tokens
+
+  def get_terminal_tokens_at_node(self, node: 'DuoGlotNode') -> List[str]:
+    '''
+    Given a node_id that belongs to the tree,
+    return a list of terminal tokens in pre-order traversal.
+
+    NOTE this method is used in s_llm_code_post_process module
+    '''
+    tokens = []
+    def _visit_collect_tokens(node: 'DuoGlotNode'):
+      nonlocal tokens
+      if node.is_terminal():
+        tokens.append(node.get_type())
+    self._pre_order(node, _visit_collect_tokens)
+    return tokens
+
+  def tree_as_list(self) -> list:
+    '''
+    for calculating tree edit distance
+    '''
+    def _pre_order(node: DuoGlotNode) -> list:
+      if node.is_terminal():
+        return node.get_type()
+      result = [node.get_type()]
+      for child in node.get_children():
+        child_res = _pre_order(child)
+        result.append(child_res)
+      return result
+    return _pre_order(self.get_root_node())
+
+  def tree_as_str(self, include_terminals: bool = False) -> str:
+    '''
+    return a string representation of `self` similar to
+    ```
+    program
+      lexical_declaration
+        variable_declarator
+          identifier
+          identifier
+    ```
+    '''
+    indentation_size = 2
+
+    def _pre_order(node: DuoGlotNode, level: int) -> Union[str, None]:
+      nonlocal indentation_size
+      if node.is_terminal():
+        return None
+      # node itself
+      result_str = node.get_ts_node_type()
+      for child in  node.children:
+        child_result_str = _pre_order(child, level + 1)
+        if child_result_str is not None:
+          result_str += '\n'
+          result_str += p_utils.indent(child_result_str, num_spaces=indentation_size)
+      return result_str
+
+    result_str = _pre_order(self.root_node, 0)
+    return result_str
+
+  def get_num_nt_nodes(self) -> int:
+    def _visit_fn(node: DuoGlotNode):
+      nonlocal counter
+      if node.is_nonterminal():
+        counter += 1
+    counter = 0
+    self._pre_order(self.root_node, _visit_fn)
+    return counter
+
+  def debug_print(self) -> None:
+    def visit_fn(node: 'DuoGlotNode'):
+      print('~~~ ', node)
+    self._pre_order(self.root_node, visit_fn)
+    print('~~~ root_node:', self.get_root_node())
+
+  def debug_str(self) -> str:
+    tree_as_str = ""
+    def visit_fn(node: 'DuoGlotNode'):
+      nonlocal tree_as_str
+      tree_as_str += f'{str(node)}\n'
+    self._pre_order(self.root_node, visit_fn)
+    return tree_as_str
+
+  def find_all_similar_nodes(self, node: 'DuoGlotNode') -> List['DuoGlotNode']:
+    '''
+    Find all nodes in the tree that are similar in structure to `node`.
+    Similar nodes have the same AST structure with only difference
+    being the node_id.
+    '''
+    def _is_myexactlog_call_PY(node: 'DuoGlotNode') -> bool:
+      '''
+      check if the node is a call to myexactlog in Python.
+      '''
+      if node.get_type() != 'py.expression_statement':
+        return False
+      children = node.get_children()
+      if len(children) != 1:
+        return False
+      child = children[0]
+      if child.get_type() != 'py.call':
+        return False
+      call_children = child.get_children()
+      if len(call_children) != 2:
+        return False
+      first_child = call_children[0]
+      if first_child.get_type() != 'py.identifier':
+        return False
+      terminal = first_child.get_children()[0]
+      if terminal.get_type() != 'myexactlog':
+        return False
+      return True
+
+    def _rec_pre_order(node_in_self: 'DuoGlotNode'):
+      nonlocal similar_nodes, node
+      # base case: do not search under `myexactlog` call in Python
+      if _is_myexactlog_call_PY(node_in_self):
+        return
+      if node_in_self.is_similar_to_rec(node):
+        similar_nodes.append(node_in_self)
+      for child in node_in_self.get_children():
+        _rec_pre_order(child)
+
+    assert node.is_nonterminal(), 'node must be non-terminal'
+    similar_nodes = []
+    _rec_pre_order(self.root_node)
+    return similar_nodes
+
+  @classmethod
+  def from_code_str(cls, code_str: str, code_lang: str) -> 'DuoGlotTree':
+    '''code_lang in ['py', 'js', ...]'''
+    code_ast, _ = d_ast_parse.parse_text_dbg(code_str, code_lang)
+    code_tree = DuoGlotTree(code_ast)
+    return code_tree
+
+
+class DuoGlotNode():
+  def __init__(self, node_type: str, parent_node: 'DuoGlotNode') -> None:
+    self.node_type = node_type
+    self.parent = parent_node
+    self.children : List[DuoGlotNode] = []
+
+  def __str__(self) -> str:
+    return f'node_type="{self.node_type}"'
+
+  def __repr__(self) -> str:
+    return f'{self.__class__.__name__}({self.node_type})'
+
+  def is_root_node(self) -> bool:
+    return self.parent is None
+
+  def get_parent(self) -> 'DuoGlotNode':
+    return self.parent
+
+  def set_parent(self, parent_node: 'DuoGlotNode') -> None:
+    self.parent = parent_node
+
+  def add_child(self, child: 'DuoGlotNode') -> None:
+    assert self.is_nonterminal(), 'can add a child to non-terminal only'
+    self.children.append(child)
+
+  def get_children(self) -> List['DuoGlotNode']:
+    return self.children
+
+  def has_parent(self) -> bool:
+    return self.parent is not None
+
+  def get_type(self) -> str:
+    return self.node_type
+
+  def is_ancestor(self, other_node: 'DuoGlotNode') -> bool:
+    '''
+    Return True iff `self` is an ancestor of `other_node`.
+    PRE `self` and `other_node` belong to the same tree
+    '''
+    # violates PRE
+    if self == other_node:
+      return False
+    # should not happen under normal circumstances
+    if other_node.parent is None:
+      return False
+    cursor = other_node.parent
+    while cursor is not None:
+      if self == cursor:
+        return True
+      cursor = cursor.parent
+    return False
+
+  def is_ancestor_or_itself(self, other_node: 'DuoGlotNode') -> bool:
+    '''
+    Return True of `self` is an ancestor of `other_node`.
+    Return True if `self == other_node`
+    NOTE works only if the nodes belong to the same `DuoGlotTree`
+    '''
+    def _recurse(node1: 'DuoGlotNode', node2: 'DuoGlotNode') -> bool:
+      '''node2 is stanionary'''
+      if id(node1) == id(node2):
+        return True
+      for child_node in node1.get_children():
+        child_res = _recurse(child_node, node2)
+        if child_res:
+          return True
+      return False
+    return _recurse(self, other_node)
+
+  def get_nonterminal_descendants(self) -> List['DuoGlotNode']:
+    '''
+    Return a list of non-terminal nodes that are descendants of `self`.
+    '''
+    def _pre_order(node: 'DuoGlotNode'):
+      nonlocal nt_descendants
+      # base case: stop on terminal node
+      if node.is_terminal():
+        return
+      # add itself
+      nt_descendants.append(node)
+      # recurse to children
+      for child in node.get_children():
+        _pre_order(child)
+    nt_descendants = []
+    for child in self.children:
+      _pre_order(child)
+    return nt_descendants
+
+  def get_path_to_child(self, child_node: 'DuoGlotNode') -> List[int]:
+    '''
+    Return a relative path from self to child_node
+    PRE: self.is_ancestor_or_itself(child_node)
+    '''
+    assert self.is_ancestor_or_itself(child_node)
+
+    def _rec_pre_order(path: List[int], node: DuoGlotNode) -> Union[None, List[int]]:
+      nonlocal child_node
+      if node == child_node:
+        return path
+      for i, nd in enumerate(node.get_children()):
+        child_result = _rec_pre_order(path + [i], nd)
+        if child_result is not None:
+          return child_result
+      return None
+    path = _rec_pre_order([], self)
+    assert path is not None, 'should not happen'
+    return path
+
+  def get_child_by_path(self, rel_path: List[int]) -> Union['DuoGlotNode', None]:
+    '''
+    Return a child node of self by a relative path
+    Return None if rel_path does not exist
+    '''
+    try:
+      child_node = self
+      for child_idx in rel_path:
+        child_node = child_node.get_children()[child_idx]
+      return child_node
+    except IndexError:
+      return None
+
+  def get_depth(self) -> int:
+    '''
+    depth between `self` and the furthest terminal node under `self`
+    '''
+
+    # base case
+    if self.is_terminal():
+      return 1
+    max_depth = 0
+    def _rec_update_max_depth(node: DuoGlotNode, current_depth: int) -> None:
+      nonlocal max_depth
+      if node.is_terminal():
+        max_depth = max(max_depth, current_depth + 1)
+      for child_node in node.get_children():
+        _rec_update_max_depth(child_node, current_depth + 1)
+    _rec_update_max_depth(self, 0)
+    return max_depth
+
+  def get_dist_root(self) -> int:
+    '''
+    get distance between `self` and `root_node`
+    '''
+    cursor = self.parent
+    dist = 0
+    while cursor is not None:
+      cursor = cursor.parent
+      dist += 1
+    return dist
+
+  def get_siblings(self) -> List['DuoGlotNode']:
+    '''
+    POST: self not in return_list
+    '''
+    if self.is_root_node():
+      return []
+    siblings = self.get_parent().get_children()[:]  # copy the references
+    siblings.remove(self)
+    return siblings
+
+  def get_siblings_include_self(self) -> List['DuoGlotNode']:
+    ''''''
+    if not self.has_parent():
+      return [self]
+    return self.parent.children
+
+  def get_siblings_to_the_left(self) -> List['DuoGlotNode']:
+    ''''''
+    siblings = self.get_siblings_include_self()
+    self_idx = siblings.index(self)
+    return siblings[:self_idx]
+
+  def get_siblings_to_the_right(self) -> List['DuoGlotNode']:
+    ''''''
+    siblings = self.get_siblings_include_self()
+    self_idx = siblings.index(self)
+    return siblings[self_idx + 1:]
+
+  def get_left_sibling(self) -> Optional['DuoGlotNode']:
+    ''''''
+    siblings = self.get_siblings_include_self()
+    self_idx = siblings.index(self)
+    if self_idx == 0:
+      return None
+    return siblings[self_idx - 1]
+
+  def get_right_sibling(self) -> Optional['DuoGlotNode']:
+    ''''''
+    siblings = self.get_siblings_include_self()
+    self_idx = siblings.index(self)
+    if self_idx == len(siblings) - 1:
+      return None
+    return siblings[self_idx + 1]
+
+  def get_num_siblings(self) -> int:
+    '''
+    Number of siblings (excluding self)
+    '''
+    return len(self.get_siblings())
+
+  def get_terminal_tokens(self, is_skip_grammar_terminal=True) -> List[str]:
+    '''
+    NOTE differentiates between
+    grammar terminals (i.e. '-', '[', '=', etc.)
+    and program terminals (i.e. literals, identifiers)
+    '''
+    tokens = []
+    def _pre_order(node: 'DuoGlotNode') -> None:
+      nonlocal tokens
+      if node.is_terminal():
+        if is_skip_grammar_terminal:
+          # ensure that we are dealing with literal-, identifier-like terminals only
+          if node.get_num_siblings() == 0:
+            tokens.append(node.get_type())
+        else:
+          tokens.append(node.get_type())
+      for child in node.get_children():
+        _pre_order(child)
+    _pre_order(self)
+    return tokens
+
+  def is_ast_width_1(self) -> bool:
+    '''
+    Starting from self and down the tree,
+    return True if the width of the tree is 1 down to the T node
+    return False otherwise
+    '''
+    cursor_node = self
+    while cursor_node.is_nonterminal():
+      if len(cursor_node.get_children()) != 1:
+        return False
+      cursor_node = cursor_node.get_children()[0]
+    return True
+
+  def has_single_terminal_child(self) -> bool:
+    return len(self.children) == 1 and self.children[0].is_terminal()
+
+  def get_num_nt_siblings(self) -> int:
+    ''''''
+    nt_siblings = [sibling for sibling in self.get_parent().get_children() if sibling != self and sibling.is_nonterminal()]
+    return len(nt_siblings)
+
+  def get_num_nt_children(self) -> int:
+    ''''''
+    nt_children = [child for child in self.get_children() if child.is_nonterminal()]
+    return len(nt_children)
+
+  def debug_str(self) -> str:
+    '''return str repr of AST rooted at this node in pre-order traversal'''
+    def _pre_order(node: 'DuoGlotNode'):
+      result = node.get_type()
+      for child in node.get_children():
+        result += ' ' + _pre_order(child)
+      return result
+    return _pre_order(self)
+
+  def get_nt_children(self) -> List['NTNode']:
+    return [child for child in self.children if child.is_nonterminal()]
+
+  def get_ts_node_type(self) -> str:
+    '''
+    Return Tree-sitter node type.
+    NOTE DuoGlotTree's are build from the parse trees generated by d_ast_parse.parse_text_dbg().
+    They include lang prefix before each non-terminal node (e.g. `py.float`).
+    '''
+    assert self.is_nonterminal()
+    return self.node_type.split('.')[1]
+
+  def is_similar_to_rec(self, other_node: 'DuoGlotNode') -> bool:
+    '''
+    Return True if `self` and `other_node` have the same structure.
+    This means that they have the same node_type and the same number of children.
+    Similarity is defined as having the same AST structure
+    without considering node_id.
+    `self` and `other_node` can belong to different trees.
+    This is a recursive method.
+    '''
+    # base case 1: different terminalities
+    if self.is_terminal() and other_node.is_nonterminal():
+      return False
+    if self.is_nonterminal() and other_node.is_terminal():
+      return False
+
+    # base case 2: both are terminal nodes
+    if self.is_terminal() and other_node.is_terminal():
+      return self.get_type() == other_node.get_type()
+
+    assert self.is_nonterminal(), 'scope invariant: self must be non-terminal'
+    assert other_node.is_nonterminal(), 'scope invariant: other_node must be non-terminal'
+
+    # base case 3: different node types
+    if self.get_type() != other_node.get_type():
+      return False
+
+    # base case 4: different number of children
+    if len(self.get_children()) != len(other_node.get_children()):
+      return False
+
+    # recursive case: check children
+    for self_child, other_child in zip(self.get_children(), other_node.get_children()):
+      if not self_child.is_similar_to_rec(other_child):
+        return False
+
+    # if we reach here, all checks passed
+    return True
+
+  def get_type_encoding(self, except_literals: bool = True) -> str:
+    # base case
+    if self.is_terminal():
+      # literals do not have siblings
+      if self.get_num_siblings() == 0:
+        return '0' if except_literals else self.get_type()
+      else:
+        return self.get_type()
+    children_encoding = ''
+    for child in self.get_children():
+      children_encoding += child.get_type_encoding(
+        except_literals=except_literals) + ' '
+    children_encoding = children_encoding.strip()
+    return f'({self.get_type()} {children_encoding})'
+
+  # abstract methods
+  def is_terminal(self) -> bool:
+    raise NotImplementedError
+
+  def is_nonterminal(self) -> bool:
+    raise NotImplementedError
+
+  def get_id(self) -> int:
+    raise NotImplementedError
+
+  def set_id(self, node_id: int) -> None:
+    raise NotImplementedError
+
+
+class TNode(DuoGlotNode):
+  def __repr__(self) -> str:
+    return f'{self.__class__.__name__}({self.node_type!r})'
+
+  # implementing abstract methods
+  def is_terminal(self) -> bool:
+    return True
+
+  def is_nonterminal(self) -> bool:
+    return False
+
+  def get_id(self) -> int:
+    raise AttributeError('Terminal nodes do not have node_id')
+
+  def set_id(self, node_id: int) -> None:
+    raise AttributeError('Terminal nodes cannot have node_id')
+
+
+class NTNode(DuoGlotNode):
+  # overridden methods
+  def __init__(self, node_type: str, parent: DuoGlotNode, node_id: int) -> None:
+    super().__init__(node_type, parent)
+    self.node_id = node_id
+
+  def __str__(self) -> str:
+    return super().__str__() + f', node_id={self.node_id}'
+
+  def __repr__(self) -> str:
+    return f'NTNode({self.node_type}, node_id={self.node_id})'
+
+  # implementing abstract methods
+  def is_terminal(self) -> bool:
+    return False
+
+  def is_nonterminal(self) -> bool:
+    return True
+
+  def get_id(self) -> int:
+    return self.node_id
+
+  def set_id(self, new_id: int) -> None:
+    self.node_id = new_id
+
+
+class AnnotatedNTNode(NTNode):
+  def __init__(self, node_type: str, parent: DuoGlotNode, node_id: int, annotation: Any):
+    '''
+    The type of annotation is defined in d_ast_parse, e.g. _anno_func_py_string()
+    '''
+    super().__init__(node_type, parent, node_id)
+    self.annotation = annotation
+
+  def __repr__(self):
+    return f'AnnotatedNTNode({self.node_type}, node_id={self.node_id})'
+
+
+# PIREL-STYLE AST
+class PirelTree:
+  '''
+  Tree for Pirel-style AST
+  '''
+  def __init__(self, full_ast_text, annotation=None) -> None:
+    '''
+    PRE: `full_ast_text` does not have ERROR nodes when parsed by Tree-sitter
+    PARAM annotation: second object returned from d_ast_parse.parse_text_dbg().
+          It contains a mapping of node_ids to node boundaries within the code.
+    '''
+    self.full_ast_text = full_ast_text
+    root_node_type, root_node_id, root_node_text, children_ast = self._parse_ast(full_ast_text)
+    self.root_node = NTTextNode(root_node_type, None, root_node_text, root_node_id)
+    for child_ast in children_ast:
+      self._rec_construct_at(self.root_node, child_ast)
+    self.annotation = annotation
+
+  def _is_annotated_node(self, ast_text: Union[list, str]) -> bool:
+    '''
+    Some nodes such as string are annotated with extra information.
+
+    [["py.string", "''"], 2,
+      ["anno", ["\"stype\"", "\"\""], ["\"quote\"", "\"'\""]],
+      "'",
+      "'"
+    ]
+    '''
+    # terminal node
+    if isinstance(ast_text, str):
+      return False
+    _, _, _, children_ast = self._parse_ast(ast_text)
+    if len(children_ast) == 0:
+      return False
+    first_child = children_ast[0]  # annotation node
+    if not isinstance(first_child, list):
+      return False
+    if first_child[0] == 'anno':
+      return True
+    return False
+
+  def _parse_ast(self, ast: list) -> Tuple[str, int, list]:
+    '''
+    Given a Pirel-style AST, parse it and return
+    node_type, node_id, node_text, children_ast as a tuple.
+    For more info, refer to DuoGlotTree._parse_ast().
+    '''
+    node_type_text, node_id, children_ast = ast[0], ast[1], ast[2:]
+    node_type, node_text = node_type_text[0], node_type_text[1]
+    parts = ast[0][0].split('.')
+    assert len(parts) == 2, 'node types in "ast" should be of the form "<lang>.<node_type_in_lang>"'
+    if parts[1] == 'ERROR':
+      raise TreeConstructionError('cannot construct a tree with error nodes')
+    return (node_type, node_id, node_text, children_ast)
+
+  def _rec_construct_at(self, parent_node: 'NTTextNode', ast_text: Union[list, str]) -> None:
+    # base case: terminal node
+    if isinstance(ast_text, str):
+      node_type = json.loads(ast_text)  # json.dumps() is used in d_ast_parse.parse_text_dbg()
+      node = TTextNode(node_type, parent_node, node_type)
+      parent_node.add_child(node)
+      return
+    # base case: annotated non-terminal node
+    if self._is_annotated_node(ast_text):
+      node_type, node_id, node_text, children_ast = self._parse_ast(ast_text)
+      annotation, actual_children = children_ast[0], children_ast[1:]
+      node = AnnotatedNTTextNode(node_type, parent_node, node_text, node_id, annotation)
+      parent_node.add_child(node)
+      # recurse children
+      for ast_child in actual_children:
+        self._rec_construct_at(node, ast_child)
+      return
+    # non-terminal node
+    node_type, node_id, node_text, children_ast = self._parse_ast(ast_text)
+    node = NTTextNode(node_type, parent_node, node_text, node_id)
+    parent_node.add_child(node)
+    # recurse children
+    for ast_child in children_ast:
+      self._rec_construct_at(node, ast_child)
+
+  def _pre_order(self, start_node: 'PirelNode', visit_fn: Callable) -> None:
+    def _rec_pre_order(node: 'PirelNode', visit_fn: Callable):
+      visit_fn(node)
+      for child in node.get_children():
+        _rec_pre_order(child, visit_fn)
+    _rec_pre_order(start_node, visit_fn)
+
+  def get_root_node(self):
+    return self.root_node
+
+  def get_node_with_id(self, node_id: int) -> Union['PirelNode', None]:
+    def _rec_search(node: PirelNode, node_id: int) -> PirelNode:
+      if node.is_terminal():
+        return None
+      if node.get_id() == node_id:
+        return node
+      for child in node.get_children():
+        child_res = _rec_search(child, node_id)
+        if child_res is not None:
+          return child_res
+      return None
+    return _rec_search(self.root_node, node_id)
+
+  def debug_print(self) -> None:
+    def visit_fn(node: 'PirelNode'):
+      print('~~~ ', node)
+    self._pre_order(self.root_node, visit_fn)
+    print('~~~ root_node:', self.get_root_node())
+
+  def __str__(self) -> str:
+    raise NotImplementedError
+
+  def _fix_indentation(self):
+    '''
+    Nested AST nodes have a broken node_text as follows:
+    Regardless of the level of nestedness, first line always has zero indentation.
+    This method prepends necessary indentation to the first line.
+    PRE1: we assume that the root node has properly formatted node_text
+    POST1: self is mutated
+    '''
+    def _visit_fix_indentation_at_node(node: PirelNode):
+      if not node.has_parent():
+        return
+      is_multiline = '\n' in node.get_text()
+      if not is_multiline:
+        return
+      parent_text = node.get_parent().get_text()
+      node_text = node.get_text()
+      node_text_start_idx = parent_text.index(node_text)  # NOTE be careful here
+      # go left and count space characters until hit a newline character or reached the edge
+      num_spaces = 0
+      search_start_idx = node_text_start_idx - 1
+      while parent_text[search_start_idx] != '\n' and search_start_idx >= 0:
+        num_spaces += 1
+        search_start_idx -= 1
+      node.set_text(' ' * num_spaces + node_text)
+    self._pre_order(self.root_node, _visit_fix_indentation_at_node)
+
+  def get_nodes_by_bounds(self, start_idx, end_idx) -> List['PirelNode']:
+    '''
+    Given bounds in a self.root_node.node_text
+    return the list of nodes that fully contain the bounds
+    '''
+    nodes_within_bounds = []
+    def _rec_collect_nodes(node: PirelNode, start_idx: int, end_idx: int):
+      nonlocal nodes_within_bounds
+      node_text = node.get_text()
+      # base case: self is the node
+      node_start_idx = 0
+      node_end_idx = len(node_text)
+      # add node IFF the bounds are exact
+      if node_start_idx == start_idx and node_end_idx == end_idx:
+        nodes_within_bounds.append(node)
+      # recurse children
+      child_search_start_idx = 0
+      for child in node.get_children():
+        child_text = child.get_text()
+        child_start_idx = node_text.index(child_text, child_search_start_idx)
+        child_end_idx = child_start_idx + len(child_text)
+        if start_idx >= child_start_idx and end_idx <= child_end_idx:
+          # update the start_idx, end_idx relative to the child
+          _rec_collect_nodes(child, start_idx - child_start_idx, end_idx - child_start_idx)
+        else:
+          child_search_start_idx += len(child_text)
+    _rec_collect_nodes(self.root_node, start_idx, end_idx)
+    return nodes_within_bounds
+
+  def get_terminal_tokens_at(self, node_id: int) -> List[str]:
+    '''
+    Given a node_id that belongs to the tree,
+    return a list of terminal tokens in pre-order traversal.
+    '''
+    tokens = []
+    def _visit_collect_tokens(node: 'PirelNode'):
+      nonlocal tokens
+      if node.is_terminal():
+        tokens.append(node.get_type())
+    node = self.get_node_with_id(node_id)
+    # sanity check
+    assert node is not None, f'{node_id} does not belong to the tree'
+    self._pre_order(node, _visit_collect_tokens)
+    return tokens
+
+  @classmethod
+  def from_code_str(cls, code: str, lang: str) -> 'PirelTree':
+    ast_text, ast_ann = d_ast_parse.parse_text_dbg(code, lang, keep_text=True)
+    tree = PirelTree(ast_text, ast_ann)
+    tree._fix_indentation()
+    return tree
+
+
+class PirelNode():
+  def __init__(self, node_type: str, parent_node: 'PirelNode', node_text: str) -> None:
+    self.node_type = node_type
+    self.parent = parent_node
+    self.node_text = node_text
+    self.children : List[PirelNode] = []
+
+  def __str__(self) -> str:
+    return f'node_type="{self.node_type}" node_text="{self.node_text}"'
+
+  def get_type(self) -> str:
+    return self.node_type
+
+  def set_type(self, new_type: str) -> None:
+    self.node_type = new_type
+
+  def get_parent(self) -> 'PirelNode':
+    return self.parent
+
+  def set_parent(self, parent_node: 'PirelNode') -> None:
+    self.parent = parent_node
+
+  def get_text(self) -> str:
+    return self.node_text
+
+  def set_text(self, text: str) -> None:
+    self.node_text = text
+
+  def add_child(self, child: 'PirelNode') -> None:
+    assert self.is_nonterminal(), 'can add a child only to non-terminal node'
+    self.children.append(child)
+
+  def get_children(self) -> List['PirelNode']:
+    return self.children
+
+  def get_nonterminal_children(self) -> List['PirelNode']:
+    return [child for child in self.children if child.is_nonterminal()]
+
+  def set_children(self, children: List['PirelNode']) -> None:
+    self.children = children
+
+  def has_parent(self) -> bool:
+    return self.parent is not None
+
+  def is_root_node(self) -> bool:
+    return self.parent is None
+
+  def get_ts_node_type(self) -> str:
+    '''
+    Return Tree-sitter node type.
+    NOTE PirelTree's are build from the parse trees generated by d_ast_parse.parse_text_dbg().
+    They include lang prefix before each non-terminal node (e.g. `py.float`).
+    '''
+    assert self.is_nonterminal()
+    return self.node_type.split('.')[1]
+
+  def is_ancestor_or_itself(self, other_node) -> bool:
+    '''
+    Return True of `self` is an ancestor of `other_node`.
+    Return True if `self == other_node`
+    NOTE works only if the nodes belong to the same `PirelTree`
+    '''
+    def _recurse(node1: 'PirelNode', node2: 'PirelNode') -> bool:
+      '''node2 is stanionary'''
+      if id(node1) == id(node2):
+        return True
+      for child_node in node1.get_children():
+        child_res = _recurse(child_node, node2)
+        if child_res:
+          return True
+      return False
+    return _recurse(self, other_node)
+
+  def is_type_isomorphic_to(self, other_node: 'PirelNode') -> bool:
+    '''
+    Return True if self and other_node are type-isomorphic:
+    1. Identical structure
+    2. Corresponding non-terminal nodes have the same types
+
+    NOTE
+    1. This method is used in p_templates.extract_templates() to filter out
+    invalid templates.
+    2. Might be weak (take into account terminals except identifiers?)
+    '''
+    def _recurse(node1: 'PirelNode', node2: 'PirelNode') -> bool:
+      # 1 terminalities differ in corresponding nodes -> not type-isomorphic
+      if node1.is_terminal() and node2.is_nonterminal():
+        return False
+      if node1.is_nonterminal() and node2.is_terminal():
+        return False
+      # 2 both nodes are terminal
+      if node1.is_terminal() and node2.is_terminal():
+        return True
+      # 3 both node1 and node2 are non-terminal at this point
+      # 4 types are different
+      if node1.get_type() != node2.get_type():
+        return False
+      # 5 number of children is different
+      if len(node1.get_children()) != len(node2.get_children()):
+        return False
+      # 6 recurse children
+      children_result = []
+      for child1, child2 in zip(node1.get_children(), node2.get_children()):
+        child_result = _recurse(child1, child2)
+        children_result.append(child_result)
+      return all(children_result)
+    return _recurse(self, other_node)
+
+  def is_full_subtree_of(self, other_node: 'PirelNode') -> bool:
+    '''
+    Return True if `self` is a sub-tree of `other_node` iff:
+    1. non-terminal nodes match
+    2. terminal nodes match
+    3. node ids do not have to match
+
+    NOTE this is a lazy implementation, consider optimizing
+    '''
+    # TODO move this function to utils module?
+    def _get_full_encoding(node: PirelNode) -> str:
+      def _rec_post_order(node: PirelNode):
+        if isinstance(node, TTextNode):
+          return node.get_type()
+        children_encoding = ''
+        for child in node.get_children():
+          children_encoding += _rec_post_order(child) + ' '
+        return f'({node.get_type()} {children_encoding[:-1]})'
+      return _rec_post_order(node)
+
+    sub_node_encoding = _get_full_encoding(self)
+    super_node_encoding = _get_full_encoding(other_node)
+    return sub_node_encoding in super_node_encoding
+
+  def get_root_node(self) -> 'PirelNode':
+    '''
+    Return reference to the root node from arbitrary node down the tree
+    '''
+    cursor = self
+    while cursor.has_parent():
+      cursor = cursor.get_parent()
+    return cursor
+
+  def has_single_terminal_child(self) -> bool:
+    return len(self.children) == 1 and self.children[0].is_terminal()
+
+  def get_index_as_child(self) -> int:
+    if self.is_root_node():
+      return 0
+    return self.get_parent().get_children().index(self)
+
+  def get_siblings(self) -> List['PirelNode']:
+    '''
+    POST: self not in return_list
+    '''
+    if self.is_root_node():
+      return []
+    siblings = self.get_parent().get_children()[:]  # copy the references
+    siblings.remove(self)
+    return siblings
+
+  def get_num_siblings(self) -> int:
+    '''
+    Number of siblings (excluding self)
+    '''
+    return len(self.get_siblings())
+
+  def has_terminal_sibling(self) -> bool:
+    '''
+    As name suggests, return True if `self` has at least one terminal sibling
+    Used in templatization v2
+    '''
+    siblings = self.get_siblings()
+    return any(map(lambda node: node.is_terminal(), siblings))
+
+  def has_terminal_child(self) -> bool:
+    return any(map(lambda node: node.is_terminal(), self.get_children()))
+
+  def has_nonterminal_child(self) -> bool:
+    return any(map(lambda node: node.is_nonterminal(), self.get_children()))
+
+  def all_children_nonterminal(self) -> bool:
+    return all(map(lambda node: node.is_nonterminal(), self.get_children()))
+
+  def get_depth(self) -> int:
+    '''
+    depth between `self` and the furthest terminal node under `self`
+    '''
+
+    # base case
+    if self.is_terminal():
+      return 1
+    max_depth = 0
+    def _rec_update_max_depth(node: PirelNode, current_depth: int) -> None:
+      nonlocal max_depth
+      if node.is_terminal():
+        max_depth = max(max_depth, current_depth + 1)
+      for child_node in node.get_children():
+        _rec_update_max_depth(child_node, current_depth + 1)
+    _rec_update_max_depth(self, 0)
+    return max_depth
+
+  def get_path_to_child(self, child_node: 'PirelNode') -> List[int]:
+    '''
+    Return a relative path from self to child_node
+    PRE: self.is_ancestor_or_itself(child_node)
+    '''
+    assert self.is_ancestor_or_itself(child_node)
+
+    def _rec_pre_order(path: List[int], node: PirelNode) -> Union[None, List[int]]:
+      nonlocal child_node
+      if node == child_node:
+        return path
+      for i, nd in enumerate(node.get_children()):
+        child_result = _rec_pre_order(path + [i], nd)
+        if child_result is not None:
+          return child_result
+      return None
+    path = _rec_pre_order([], self)
+    assert path is not None, 'should not happen'
+    return path
+
+  def get_node_by_id(self, node_id: int) -> 'PirelNode':
+    '''
+    get a reference to a node with id node_id
+    that belongs to the same tree as self
+    '''
+    cursor = self
+    # move up to the root
+    while cursor.has_parent():
+      cursor = cursor.get_parent()
+
+    def _rec_pre_order(node: PirelNode, node_id: int) -> Union[None, PirelNode]:
+      ''''''
+      if node.is_terminal():
+        return None
+      if node.get_id() == node_id:
+        return node
+      for child_node in node.get_children():
+        child_result = _rec_pre_order(child_node, node_id)
+        if child_result is not None:
+          return child_result
+      return None
+    node = _rec_pre_order(cursor, node_id)
+    assert node is not None, 'prerequisite not met, node does not exist'
+    return node
+
+  def get_child_by_path(self, rel_path: List[int]) -> Union['PirelNode', None]:
+    '''
+    Return a child node of self by a relative path
+    PRE: rel_path exists in self
+    '''
+    try:
+      child_node = self
+      for child_idx in rel_path:
+        child_node = child_node.get_children()[child_idx]
+      return child_node
+    except IndexError:
+      return None
+
+  def get_ast_as_list(self) -> list:
+    '''
+    Given a PirelNode (i.e. self), return a list representation of sub-AST
+    rooted at self of a tree self belongs to.
+    Returns sth similar to a full_ast_text that PirelTree was constructed from.
+    '''
+    def _rec_pre_order(node: PirelNode, ast_as_list: list) -> list:
+      '''NOTE includes NT and T nodes'''
+      ast_as_list.append(node.get_type())
+      for child in node.get_children():
+        child_ast_as_list = _rec_pre_order(child, [])
+        ast_as_list.append(child_ast_as_list)
+      return ast_as_list
+
+    ast_as_list = _rec_pre_order(self, [])
+    return ast_as_list
+
+  def get_terminals_upto_depth(self, depth: int) -> Set[str]:
+    '''
+    self is at depth 1
+    '''
+    terminals = set()
+    def _rec_pre_order(node: PirelNode, current_depth: int) -> None:
+      nonlocal depth, terminals
+      if current_depth > depth:
+        return
+      if node.is_terminal() and node.get_num_siblings() == 0:
+        terminals.add(node.get_type())
+        return
+      for child_node in node.get_children():
+        _rec_pre_order(child_node, current_depth + 1)
+    _rec_pre_order(self, 1)
+    return terminals
+
+  def is_grammar_terminal(self) -> bool:
+    '''
+    grammar terminal - terminals that appear in grammar
+    '''
+    if self.is_terminal():
+      if self.get_num_siblings() > 0:
+        return True
+    return False
+
+  # abstract methods
+  def is_terminal(self) -> bool:
+    raise NotImplementedError
+
+  def is_nonterminal(self) -> bool:
+    raise NotImplementedError
+
+  def get_id(self) -> int:
+    raise NotImplementedError
+
+  def set_id(self, node_id: int) -> None:
+    raise NotImplementedError
+
+
+class TTextNode(PirelNode):
+  def __repr__(self) -> str:
+    return f'T("{self.node_type}")'
+
+  # implementing abstract methods
+  def is_terminal(self) -> bool:
+    return True
+
+  def is_nonterminal(self) -> bool:
+    return False
+
+  def get_id(self) -> int:
+    raise AttributeError('Terminal nodes do not have node_id')
+
+  def set_id(self, node_id: int) -> None:
+    raise AttributeError('Terminal nodes cannot have node_id')
+
+
+class NTTextNode(PirelNode):
+  # overridden methods
+  def __init__(self, node_type: str, parent: PirelNode, node_text: str, node_id: int) -> None:
+    super().__init__(node_type, parent, node_text)
+    self.node_id = node_id
+
+  def __str__(self) -> str:
+    return f'node_id={self.node_id}, ' + super().__str__()
+
+  def __repr__(self) -> str:
+    return f'NT({self.node_id}, {self.node_type})'
+
+  # implementing abstract methods
+  def is_terminal(self) -> bool:
+    return False
+
+  def is_nonterminal(self) -> bool:
+    return True
+
+  def get_id(self) -> int:
+    return self.node_id
+
+  def set_id(self, new_id: int) -> None:
+    self.node_id = new_id
+
+
+class AnnotatedNTTextNode(NTTextNode):
+  def __init__(self, node_type: str, parent: DuoGlotNode, node_text: str, node_id: int, annotation: Any):
+    '''
+    The type of annotation is defined in d_ast_parse, e.g. _anno_func_py_string()
+    '''
+    super().__init__(node_type, parent, node_text, node_id)
+    self.annotation = annotation
+
+  def __repr__(self):
+    return f'AnnotatedNTTextNode({self.node_type}, node_id={self.node_id})'
+
+
+# PATTERN TREE
+class PatternTree:
+  '''
+  A read-only tree class that represents a parsed translation rule.
+  '''
+  def __init__(self, pattern: list, lang: str) -> None:
+    self.pattern = pattern
+    self.lang = lang
+    self.re_dotstar_num = re.compile(r'^"([\.\*])(\d+)"$')
+    self.re_str_num = re.compile(r'^"_str(\d+)_"$')
+    self.re_val_num = re.compile(r'^"_val(\d+)_"$')
+    self.re_dotstar_only = re.compile(r'^"[\.\*]"$')
+    self.dotstar_counter = 1
+    self.str_counter = 1
+    self.val_counter = 1
+    assert not self._is_annotated_pattern(pattern), 'root node cannot be annotated'
+    root_node_type, root_children = self._parse_pattern(pattern)
+    self.root_node = PatternNode(root_node_type, None)
+    for child_pattern in root_children:
+      self._rec_construct_at(self.root_node, child_pattern)
+
+  def __repr__(self) -> str:
+    return f'PatternTree[{repr(self.root_node)}]'
+
+  def _parse_pattern(self, pattern: Union[list, str]) -> Tuple[str, list]:
+    assert isinstance(pattern, (list, str))
+    # terminal node
+    if isinstance(pattern, str):
+      return pattern, []
+    node_type, children = pattern[0], pattern[1:]
+    return node_type, children
+
+  # METHODS FOR DISTINGUISHING DIFFERENT PATTERN TYPES
+  # all patterns are mutually exclusive, i.e. a pattern can only be one of the following types
+  def _is_terminal_pattern(self, pattern: Union[list, str]) -> bool:
+    return isinstance(pattern, str)
+
+  def _is_nostr_pattern(self, pattern: Union[list, str]) -> bool:
+    '''
+    Appears as (nostr) in translation rules.
+    '''
+    return pattern == ['nostr']
+
+  def _is_annotated_pattern(self, pattern: Union[list, str]) -> bool:
+    '''
+    Some patterns such as string are annotated with extra information.
+    '''
+    if self._is_terminal_pattern(pattern):
+      return False
+    if self._is_nostr_pattern(pattern):
+      return False
+    _, children = self._parse_pattern(pattern)
+    if len(children) == 0:
+      return False
+    first_child = children[0]  # annotation node
+    if not isinstance(first_child, list):
+      return False
+    if first_child[0] == 'anno':
+      return True
+    return False
+
+  def _is_nonterminal_pattern(self, pattern: Union[list, str]) -> bool:
+    if self._is_terminal_pattern(pattern):
+      return False
+    if self._is_nostr_pattern(pattern):
+      return False
+    if self._is_annotated_pattern(pattern):
+      return False
+    return True
+
+  # METHODS FOR CONSTRUCTING PATTERN NODES
+  def _create_t_node(self, node_type: str, parent_node: 'PatternNode') -> None:
+    assert isinstance(node_type, str), 't_node type must be a string'
+    # regular terminal
+    if parent_node.node_type in ['str', 'val']:
+      term_node = PatternNode(node_type, parent_node)
+      parent_node.add_child(term_node)
+      return
+    # ./* placeholder in src pattern
+    if node_type in ['"."', '"*"']:
+      new_node = PhNode(node_type, parent_node, self.dotstar_counter)
+      self.dotstar_counter += 1
+      parent_node.add_child(new_node)
+      return
+    # _str_ placeholder in src pattern
+    if node_type == '"_str_"':
+      new_node = PhNode(node_type, parent_node, self.str_counter)
+      self.str_counter += 1
+      parent_node.add_child(new_node)
+      return
+    # _val_ placeholder in src pattern
+    if node_type == '"_val_"':
+      new_node = PhNode(node_type, parent_node, self.val_counter)
+      self.val_counter += 1
+      parent_node.add_child(new_node)
+      return
+    # ./* placeholder in tar pattern
+    dotstar_num_match = self.re_dotstar_num.match(node_type)
+    if dotstar_num_match:
+      new_node = PhNode(node_type, parent_node, int(dotstar_num_match.group(2)))
+      parent_node.add_child(new_node)
+      return
+    # _strN_ placeholder in tar pattern
+    str_num_match = self.re_str_num.match(node_type)
+    if str_num_match:
+      new_node = PhNode(node_type, parent_node, int(str_num_match.group(1)))
+      parent_node.add_child(new_node)
+      return
+    # _valN_ placeholder in tar pattern
+    val_num_match = self.re_val_num.match(node_type)
+    if val_num_match:
+      new_node = PhNode(node_type, parent_node, int(val_num_match.group(1)))
+      parent_node.add_child(new_node)
+      return
+    raise ValueError(f'unknown terminal node type: {node_type}')
+
+  def _create_nt_node(self, node_type: str, parent_node: 'PatternNode', children_pattern: list) -> None:
+    new_node = PatternNode(node_type, parent_node)
+    parent_node.add_child(new_node)
+    for child_pattern in children_pattern:
+      self._rec_construct_at(new_node, child_pattern)
+
+  def _create_anno_nt_node(self, node_type: str, parent_node: 'PatternNode', children_pattern: list) -> None:
+    assert len(children_pattern) > 1, 'Annotated NT node must have at least one child (the annotation)'
+    annotation = children_pattern[0]  # annotation node
+    actual_children = children_pattern[1:]
+    new_node = AnnotatedPatternNode(node_type, parent_node, annotation)
+    parent_node.add_child(new_node)
+    for child_pattern in actual_children:
+      self._rec_construct_at(new_node, child_pattern)
+
+  # OTHER METHODS
+  def _rec_construct_at(self, parent_node: 'PatternNode', pattern: Union[list, str]) -> None:
+    assert sum([
+      self._is_terminal_pattern(pattern),
+      self._is_nostr_pattern(pattern),
+      self._is_annotated_pattern(pattern),
+      self._is_nonterminal_pattern(pattern),
+    ]) == 1, 'only one of the pattern types should be true'
+
+    # terminal node
+    if self._is_terminal_pattern(pattern):
+      self._create_t_node(pattern, parent_node)
+      return
+    # nostr node
+    if self._is_nostr_pattern(pattern):
+      # do nothing
+      return
+    node_type, children = self._parse_pattern(pattern)
+    # annotated NT node
+    if self._is_annotated_pattern(pattern):
+      self._create_anno_nt_node(node_type, parent_node, children)
+      return
+    # NT node
+    self._create_nt_node(node_type, parent_node, children)
+
+  def _pre_order(self, start_node: 'PatternNode', visit_fn: Callable) -> None:
+    def _rec_pre_order(node: 'PatternNode', visit_fn: Callable):
+      visit_fn(node)
+      for child in node.get_children():
+        _rec_pre_order(child, visit_fn)
+    _rec_pre_order(start_node, visit_fn)
+
+  def get_node_with_type(self, node_type: str) -> Union['PatternNode', None]:
+    '''
+    return first occurence in pre-order traversal
+    intended to be looking for placeholder nodes
+    NOTE target patterns may contain the same placeholders (e.g. .1, .1)
+    '''
+    counter = 1
+    def _rec_search_counter(node: PatternNode, node_type: str) -> Union[PatternNode, None]:
+      nonlocal counter
+      # `isinstance(node, PhNode)` relies that `PatternTree` is built correctly,
+      # i.e. placeholder nodes are instances of `PhNode`.
+      if isinstance(node, PhNode) and self.re_dotstar_num.match(node_type):
+        # target pattern
+        if self.re_dotstar_num.match(node.get_type()):
+          if node.get_type() == node_type:
+            return node
+        # source pattern
+        if self.re_dotstar_only.match(node.get_type()):
+          if f'''"{node.get_type().strip('"')}{str(counter)}"''' == node_type:
+            assert node.get_phid() == counter
+            return node
+          else:
+            counter += 1
+      for child in node.get_children():
+        child_res = _rec_search_counter(child, node_type)
+        if child_res is not None:
+          return child_res
+      return None
+
+    assert self.re_dotstar_num.match(node_type), 'expected a target pattern slot (.1, *3, etc)'
+    return _rec_search_counter(self.root_node, node_type)
+
+  def debug_print(self) -> None:
+    def visit_fn(node: 'PatternNode'):
+      print('~~~ ', node)
+    self._pre_order(self.root_node, visit_fn)
+
+  def tree_as_str(self, include_terminals: bool = False) -> str:
+    '''
+    return a string representation of `self` similar to
+    ```
+    program
+      lexical_declaration
+        variable_declarator
+          identifier
+          identifier
+    ```
+    '''
+    indentation_size = 2
+
+    def _pre_order(node: PatternNode, level: int) -> Union[str, None]:
+      nonlocal indentation_size
+      if node.is_terminal():
+        if include_terminals:
+          return node.get_type()
+        return None
+      # node itself
+      result_str = node.get_type()
+      for child in  node.children:
+        child_result_str = _pre_order(child, level + 1)
+        if child_result_str is not None:
+          result_str += '\n'
+          result_str += p_utils.indent(child_result_str, num_spaces=indentation_size)
+      return result_str
+
+    result_str = _pre_order(self.root_node, 0)
+    return result_str
+
+
+class PatternNode():
+  '''
+  A read-only node class
+
+  Attributes:
+  - node_type
+  - parent
+  - children
+  '''
+  def __init__(self, node_type: str, parent: 'PatternNode') -> None:
+    self.node_type = node_type
+    self.parent = parent
+    self.children : List['PatternNode'] = []
+    self.re_nt = re.compile(r'^"[a-z]+\.[a-z_]+"$')  # NT, e.g. py.integer
+    self.re_dotstar_num = re.compile(r'^"([\.\*])(\d+)"$')  # ".1"
+
+  def __str__(self) -> str:
+    return self.node_type
+
+  def __repr__(self) -> str:
+    tornt = 'T' if self.is_terminal() else 'NT'
+    return f'{tornt}({self.node_type})'
+
+  def get_type(self) -> str:
+    return self.node_type
+
+  def add_child(self, child: 'PatternNode') -> None:
+    self.children.append(child)
+
+  def get_children(self) -> List['PatternNode']:
+    return self.children
+
+  def is_root_node(self) -> bool:
+    return not self.has_parent()
+
+  def is_terminal(self) -> bool:
+    return len(self.children) == 0
+
+  def is_nonterminal(self) -> bool:
+    return not self.is_terminal()
+
+  def has_parent(self) -> bool:
+    return self.parent is not None
+
+  def get_parent(self) -> Union['PatternNode', None]:
+    return self.parent
+
+  def has_previous_sibling(self) -> bool:
+    return self.get_index_as_child() > 0
+
+  def get_previous_sibling(self) -> Union['PatternNode', None]:
+    self_idx = self.get_index_as_child()
+    if self_idx == 0:
+      return None
+    return self.get_parent().get_children()[self_idx - 1]
+
+  def get_index_as_child(self) -> int:
+    if self.is_root_node():
+      return 0
+    return self.get_parent().get_children().index(self)
+
+  def get_path_to_root_source(self, expansion: gdp.Expansion) -> list:
+
+    def _get_path(node: PatternNode, expansion: gdp.Expansion) -> Union[str, None]:
+      node_type = node.get_type()
+
+      # regular NT node
+      if self.re_nt.match(node_type):
+        return node_type.strip('"')
+
+      # when building path in source, should not see target PH nodes
+      elif self.re_dotstar_num.match(node_type):
+        raise RuntimeError('should not happen')
+
+      # when building path in source, meet a PH node
+      elif node_type in ['"."', '"*"']:
+        phid = node.get_phid()
+        slot_name = f'''"{node_type.strip('"') + str(phid)}"'''
+
+        # NOTE `slot_name` may not be in `expansion.slot_names`
+        # if it is not being used. That is, there might be a placeholder
+        # in the source matcher that does not appear in the target matcher.
+        # assert slot_name in expansion.slot_names
+        # TODO what this case tells us? (iteration 25, L0005)
+        if slot_name not in expansion.slot_names:
+          assert node_type == '"."', 'currently works with dot placeholder only'
+          logger.warning('BAD: this case needs to be considered later')
+          return 'pirel_anynode'
+
+        node_slot : gdp.Slot = expansion.slots[expansion.slot_names.index(slot_name)]
+
+        slot_range_cursor = node_slot.range_cursor
+        slot_child_node_ids = node_slot.slot_node_ids
+
+        slot_ast = slot_range_cursor[0]
+        slot_start_idx = slot_range_cursor[1]
+        slot_end_idx = slot_range_cursor[2]
+
+        node_ast = None
+        for _cursor_idx in range(slot_start_idx, slot_end_idx):
+          node_ast = slot_ast[_cursor_idx]
+          if node_ast[1] in slot_child_node_ids:
+            break
+        assert node_ast is not None
+
+        slot_type = node_ast[0]
+        return slot_type
+
+      return None
+
+    path = [[]]
+    cursor_node = self
+    while cursor_node.has_parent():
+      while cursor_node.has_previous_sibling():
+        cursor_node = cursor_node.get_previous_sibling()
+        cursor_path = _get_path(cursor_node, expansion)
+        if cursor_path is not None:
+          path[0].append(cursor_path)
+      cursor_node = cursor_node.get_parent()
+      cursor_path = _get_path(cursor_node, expansion)
+      if cursor_path is not None:
+        path.insert(0, [cursor_path])
+    return path
+
+  def get_path_to_root_target(self, expansion: gdp.Expansion, slot_expand_info_dict: dict) -> list:
+
+    def _get_path(node: PatternNode, expansion: gdp.Expansion, slot_expand_info_dict: dict) -> Union[str, None]:
+      node_type = node.get_type()
+
+      # regular NT node
+      if self.re_nt.match(node_type):
+        return node_type.strip('"')
+
+      # when building path in target, should not see source PH nodes
+      elif node_type in ['"."', '"*"']:
+        raise RuntimeError('should not happen')
+
+      # when building path in target, meet a PH node
+      elif self.re_dotstar_num.match(node_type):
+        slot_name = node_type
+        assert slot_name in expansion.slot_names
+        node_slot : gdp.Slot = expansion.slots[expansion.slot_names.index(slot_name)]
+        all_expansions_node_slot = _get_slot_possible_expansions(node_slot, slot_expand_info_dict)
+        assert all_expansions_node_slot is not None, 'should not happen'
+        # TODO in what cases need to choose others?
+        pos_exp = all_expansions_node_slot[0]
+        # NOTE might do sth sophisticated here, but we just need to the name of the top-most node,
+        # w/o going down the entire tree
+        node_type = pos_exp.expan_fragment[1][0]
+        return node_type.strip('"')
+
+      return None
+
+    def _get_slot_possible_expansions(slot: gdp.Slot, slot_expand_info_dict: dict) -> Union[List[gdp.Expansion], None]:
+      '''
+      return all possible expansions that might be created from this slot (down)
+
+      might return
+      1. None - in case expansions were not generated for this slot
+      2. empty list - no translation rule matched for slot
+      3. non-empty list - expansions
+      '''
+
+      slot_id = slot.slot_id
+
+      # slot was created, but expansions for this slot were not
+      if slot_id not in slot_expand_info_dict:
+        return None
+
+      return slot_expand_info_dict[slot_id][0]
+
+    path = [[]]
+    cursor_node = self
+    while cursor_node.has_parent():
+      while cursor_node.has_previous_sibling():
+        cursor_node = cursor_node.get_previous_sibling()
+        cursor_path = _get_path(cursor_node, expansion, slot_expand_info_dict)
+        if cursor_path is not None:
+          path[0].append(cursor_path)
+      cursor_node = cursor_node.get_parent()
+      cursor_path = _get_path(cursor_node, expansion, slot_expand_info_dict)
+      if cursor_path is not None:
+        path.insert(0, [cursor_path])
+    return path
+
+  def get_phid(self):
+    raise NotImplementedError
+
+
+class PhNode(PatternNode):
+  def __init__(self, node_type: str, parent: PatternNode, phid: int) -> None:
+    super().__init__(node_type, parent)
+    self.phid = phid
+
+  def __str__(self) -> str:
+    return super().__str__() + f' {self.phid}'
+
+  def __repr__(self):
+    return f'PH({self.node_type}-{self.phid})'
+
+  def get_phid(self) -> int:
+    return self.phid
+
+
+class AnnotatedPatternNode(PatternNode):
+  def __init__(self, node_type: str, parent: PatternNode, annotation: Any) -> None:
+    super().__init__(node_type, parent)
+    self.annotation = annotation
+
+  def __repr__(self) -> str:
+    return f'NT-Anno({self.node_type})'
+
+
+class NostrNode():
+  def __repr__(self) -> str:
+    return 'NOSTR'
+
+
+# REVERSE CALLGRAPH ORDER TRANSLATION
+class ImportStatement:
+  def __init__(self, code: str):
+    self.code = code.strip()
+
+  def __repr__(self):
+    return f'ImportStatement'
+
+  def to_dict(self) -> dict:
+    return {
+      'code': self.code,
+    }
+
+  @classmethod
+  def from_dict(cls, data: dict) -> 'ImportStatement':
+    return cls(code=data['code'])
+
+
+class GlobalAssignment:
+  def __init__(self, code: str):
+    self.code = code.strip()
+    self._translated_code : Optional[str] = None
+
+  def __repr__(self):
+    return f'GlobalAssignment'
+
+  @property
+  def translated_code(self) -> Optional[str]:
+    return self._translated_code
+
+  @translated_code.setter
+  def translated_code(self, value: str):
+    self._translated_code = value
+
+  def to_dict(self) -> dict:
+    return {
+      'code': self.code,
+      'translated_code': self._translated_code,
+    }
+
+  @classmethod
+  def from_dict(cls, data: dict) -> 'GlobalAssignment':
+    obj = cls(code=data['code'])
+    obj._translated_code = data['translated_code']
+    return obj
+
+
+class Function:
+  def __init__(
+    self,
+    name: str,
+    code: str,
+    dep_function_names: List[str]
+  ):
+    '''
+    PARAM name: function name
+    PARAM code: function source code including signature
+    PARAM dep_function_names: names of functions that `self` depends on (i.e. calls)
+
+    ATTR signature: function signature extracted from code
+    ATTR translated_code: translated function code including signature (set later)
+    '''
+    self.name = name
+    self.code = code
+    self.dep_function_names = dep_function_names
+
+    function_signature = self.code.split('\n')[0]
+    assert self.name in function_signature, 'Function name does not match code signature'
+    assert function_signature.strip().startswith('def '), 'Function signature must start with def'
+    assert function_signature.strip().endswith(':'), 'Function signature must end with :'
+    self.signature : str = function_signature.strip()
+
+    self._translated_code : Optional[str] = None
+
+  def __repr__(self):
+    return f'Function(name={self.name})'
+
+  @property
+  def translated_code(self) -> Optional[str]:
+    if self._translated_code is None:
+      raise AttributeError('translated_code has not been set yet')
+    return self._translated_code
+
+  @translated_code.setter
+  def translated_code(self, value: str):
+    self._translated_code = value
+
+  def to_dict(self) -> dict:
+    return {
+      'name': self.name,
+      'code': self.code,
+      'dep_function_names': self.dep_function_names,
+      'signature': self.signature,
+      'translated_code': self._translated_code,
+    }
+
+  @classmethod
+  def from_dict(cls, data: dict) -> 'Function':
+    obj = cls(
+      name=data['name'],
+      code=data['code'],
+      dep_function_names=data['dep_function_names'],
+    )
+    obj._translated_code = data.get('translated_code', None)
+    return obj
+
+
+class EntryPointInvocation:
+  def __init__(self, code: str):
+    self.code = code.strip()
+    self._translated_code = code + ';'  # translate manually
+
+  def __repr__(self):
+    return f'EntryPointInvocation'
+
+  @property
+  def translated_code(self) -> Optional[str]:
+    if self._translated_code is None:
+      raise AttributeError('translated_code has not been set yet')
+    return self._translated_code
+
+  @translated_code.setter
+  def translated_code(self, value: str):
+    raise AttributeError('translated_code is hardcoded and cannot be changed')
+
+  def to_dict(self) -> dict:
+    return {
+      'code': self.code,
+      'translated_code': self._translated_code,
+    }
+
+  @classmethod
+  def from_dict(cls, data: dict) -> 'EntryPointInvocation':
+    obj = cls(code=data['code'])
+    obj._translated_code = data.get('translated_code', None)
+    return obj
+
+
+class TranslationRegistry:
+  def __init__(
+    self,
+    src_program: str,
+    rcg_order: List[str],
+    gen_fn_names: List[str],
+    dumped_args_dir: Path
+  ):
+    '''
+    PARAM src_program: source program text:
+          1. must have the following structure:
+              - imports
+              - globals
+              - function definitions
+              - a single entry point invocation (e.g. test())
+          2. no nonlocal variables, globals are allowed
+    PARAM rcg_order: reverse callgraph order of function names in src_program
+    PARAM gen_fn_names: names of functions that are generators (contain `yield` statements)
+    PARAM dumped_args_dir: directory where dumped arguments are stored:
+          These dumped arguments are used as test inputs during validation.
+
+    ATTR _functions: mapping of function names to Function objects
+          1. filled during initialization
+          2. target (translated) code is a dummy placeholder and is set later
+    '''
+
+    self.src_program = src_program
+    self.rcg_order = rcg_order
+    self.gen_fn_names = gen_fn_names
+    self.dumped_args_dir = dumped_args_dir
+
+    self._imports : List[ImportStatement] = []
+    self._globals : List[GlobalAssignment] = []
+    self._functions : Dict[str, Function] = {}
+
+    data = pvpy.ModuleLevelStatementExtractor.extract(src_program)
+    import_statements = data['import_statements']
+    global_assignments = data['global_assignments']
+    function_definitions = data['function_definitions']
+    function_calls = data['function_calls']
+
+    for import_code in import_statements:
+      import_stmt = ImportStatement(code=import_code)
+      self._imports.append(import_stmt)
+
+    for global_assignment in global_assignments:
+      global_stmt = GlobalAssignment(code=global_assignment)
+      self._globals.append(global_stmt)
+
+    for idx, func_name in enumerate(rcg_order):
+      assert isinstance(func_name, str), 'rcg_order must be a list of function names (str)'
+      assert func_name in function_definitions, f'function {func_name} not found in src_program'
+      func = Function(
+        name=func_name,
+        code=function_definitions[func_name],
+        dep_function_names=[dep_name for dep_name in rcg_order[:idx]]
+      )
+      func.translated_code = f'function {func_name}() {{}}'  # NOTE fn params are skipped
+      self._functions[func_name] = func
+
+    assert len(function_calls) == 1, 'src_program must contain a single entry point invocation'
+    entry_point_code = function_calls[0]
+    self._entry_point_invocation = EntryPointInvocation(code=entry_point_code)
+
+  def __repr__(self) -> str:
+    return f'TranslationRegistry(n={len(self._functions)})'
+
+  @property
+  def imports(self) -> List[ImportStatement]:
+    return self._imports
+
+  @property
+  def globals(self) -> List[GlobalAssignment]:
+    return self._globals
+
+  def get_function(self, function_name: str) -> Function:
+    if function_name not in self._functions:
+      raise KeyError(f'Function {function_name} not found in registry')
+    return self._functions[function_name]
+
+  @property
+  def entry_point_invocation(self) -> EntryPointInvocation:
+    return self._entry_point_invocation
+
+  def to_dict(self) -> dict:
+    return {
+      'src_program': self.src_program,
+      'rcg_order': self.rcg_order,
+      'gen_fn_names': self.gen_fn_names,
+      'dumped_args_dir': str(self.dumped_args_dir),
+      'imports': [imp.to_dict() for imp in self._imports],
+      'globals': [glob.to_dict() for glob in self._globals],
+      'functions': {name: func.to_dict() for name, func in self._functions.items()},
+      'entry_point_invocation': self._entry_point_invocation.to_dict(),
+    }
+
+  @classmethod
+  def from_dict(cls, data: dict) -> 'TranslationRegistry':
+    obj = cls(
+      src_program=data['src_program'],
+      rcg_order=data['rcg_order'],
+      gen_fn_names=data['gen_fn_names'],
+      dumped_args_dir=Path(data['dumped_args_dir'])
+    )
+    for imp_data in data['imports']:
+      obj._imports.append(ImportStatement.from_dict(imp_data))
+    for glob_data in data['globals']:
+      obj._globals.append(GlobalAssignment.from_dict(glob_data))
+    for name, func_data in data['functions'].items():
+      obj._functions[name] = Function.from_dict(func_data)
+    obj._entry_point_invocation = EntryPointInvocation.from_dict(data['entry_point_invocation'])
+    return obj

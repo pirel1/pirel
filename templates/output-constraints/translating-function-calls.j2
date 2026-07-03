@@ -1,0 +1,6 @@
+* For ordinary function invocation, use direct call syntax in {{tar_language}}:
+  `f(x, y)` only.
+* Do not rewrite ordinary calls as dynamic dispatch, including:
+  `f.__call__(...)`, `f.call(...)`, `f.apply(...)`, or similar method-based invocation.
+* Exception: keep API-required method calls that are already explicit object methods in source intent
+  (for example, `Object.prototype.hasOwnProperty.call(obj, key)` when needed for dictionary semantics).

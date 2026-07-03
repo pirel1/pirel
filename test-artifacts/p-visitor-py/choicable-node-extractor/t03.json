@@ -1,0 +1,30 @@
+{
+  "code": "while b < len(a) - 1:\n    ab = a[b].strip()\n    while not class_var.bounded_string(ab) or (len(ab) > 2 and ab[0] == ab[1] == ab[2] and (ab[len(ab) - 2] != ab[0]) and (ab[len(ab) - 3] != ab[0])):\n        a[b] = a[b] + ',' + a[b + 1]\n        ab = a[b].strip()\n        if b < len(a) - 2:\n            a = a[:b + 1] + a[b + 2:]\n        else:\n            a = a[:b + 1]\n    b += 1",
+  "choicable_nodes": [
+    "b",
+    "a",
+    "1",
+    "a[b].strip()",
+    "not class_var.bounded_string(ab)",
+    "ab",
+    "2",
+    "ab[0] == ab[1] == ab[2]",
+    "ab",
+    "ab",
+    "2",
+    "ab[0]",
+    "ab",
+    "ab",
+    "3",
+    "ab[0]",
+    "a[b] + ',' + a[b + 1]",
+    "a[b].strip()",
+    "b",
+    "a",
+    "2",
+    "a[:b + 1] + a[b + 2:]",
+    "a[:b + 1]",
+    "1"
+  ],
+  "exclude_stat_nids": []
+}

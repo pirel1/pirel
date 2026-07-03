@@ -1,0 +1,7 @@
+__pycache__
+/.env.json
+/.vscode
+.coverage
+validation-cache/
+gfg_log/
+/exp-result-csv/

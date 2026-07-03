@@ -1,0 +1,51 @@
+;;;;;;;; these rules are needed to obtain the translation of the test script in source language
+
+;;;;;;;; fallback for deferred pre-context rewrites:
+;;;;;;;; allows call-only statements to be translated during validation
+;;;;;;;; without requiring a statement-specific learned rule.
+(match_expand
+  (fragment ("py.expression_statement" ("py.call" "." ".")) "*")
+  (fragment ("js.expression_statement" ("js.call_expression" ".1" ".2")) "*3")
+)
+
+;;;;;;;; fallback for deferred call-only statements when callee-specific call rules
+;;;;;;;; are not learned yet: translate common Python argument list shapes.
+(match_expand
+  (fragment ("py.argument_list" (str "(") (str ")")) "*")
+  (fragment ("js.arguments" (str "(") (str ")")) "*1")
+)
+
+(match_expand
+  (fragment ("py.argument_list" (str "(") "." (str ")")) "*")
+  (fragment ("js.arguments" (str "(") ".1" (str ")")) "*2")
+)
+
+(match_expand
+  (fragment ("py.argument_list" (str "(") "." (str ",") "." (str ")")) "*")
+  (fragment ("js.arguments" (str "(") ".1" (str ",") ".2" (str ")")) "*3")
+)
+
+;;;;;;;; tolerate common call shapes in deferred-finalization validation context.
+;;;;;;;; method call: obj.fn(args...) -> obj.fn(args...)
+(match_expand
+  (fragment ("py.call" ("py.attribute" "." (str ".") ".") ".") "*")
+  (fragment ("js.call_expression" ("js.member_expression" ".1" (str ".") ".2") ".3") "*4")
+)
+
+;;;;;;;; bare call: fn(args...) -> fn(args...)
+(match_expand
+  (fragment ("py.call" "." ".") "*")
+  (fragment ("js.call_expression" ".1" ".2") "*3")
+)
+
+;;;;;;;; three positional arguments (kept explicit for stability with current matcher).
+(match_expand
+  (fragment ("py.argument_list" (str "(") "." (str ",") "." (str ",") "." (str ")")) "*")
+  (fragment ("js.arguments" (str "(") ".1" (str ",") ".2" (str ",") ".3" (str ")")) "*4")
+)
+
+;;;;;;;; inserted into loops so that they terminate
+(match_expand
+  (fragment ("py.break_statement") "*")
+  (fragment ("js.break_statement") "*1")
+)

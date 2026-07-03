@@ -1,0 +1,29 @@
+{
+  "ground_truth_translations": {
+    "SkelClass": {
+      "src": "    Clz = type(name, (), {'_class_name': name})\n    return Clz",
+      "tar": "    var Clz = function() {\n        var _class_var = {};\n        _class_var._class_name = name;\n        return _class_var;\n    };\n    return Clz;"
+    },
+    "preorder_traverse": {
+      "src": "        yield class_var.label\n        if class_var.left:\n            yield from class_var.left.preorder_traverse()\n        if class_var.right:\n            yield from class_var.right.preorder_traverse()",
+      "tar": "        yield class_var.label;\n        if (class_var.left) {\n            yield* class_var.left.preorder_traverse();\n        }\n        if (class_var.right) {\n            yield* class_var.right.preorder_traverse();\n        }",
+      "is_generator": true
+    },
+    "inorder_traverse": {
+      "src": "        if class_var.left:\n            yield from class_var.left.inorder_traverse()\n        yield class_var.label\n        if class_var.right:\n            yield from class_var.right.inorder_traverse()",
+      "tar": "        if (class_var.left) {\n            yield* class_var.left.inorder_traverse();\n        }\n        yield class_var.label;\n        if (class_var.right) {\n            yield* class_var.right.inorder_traverse();\n        }",
+      "is_generator": true
+    },
+    "postorder_traverse": {
+      "src": "        if class_var.left:\n            yield from class_var.left.postorder_traverse()\n        if class_var.right:\n            yield from class_var.right.postorder_traverse()\n        yield class_var.label",
+      "tar": "        if (class_var.left) {\n            yield* class_var.left.postorder_traverse();\n        }\n        if (class_var.right) {\n            yield* class_var.right.postorder_traverse();\n        }\n        yield class_var.label;",
+      "is_generator": true
+    },
+    "black_height": {
+      "src": "        if class_var is None or class_var.left is None or class_var.right is None:\n            return 1\n        left = class_var.left.black_height()\n        right = class_var.right.black_height()\n        if left is None or right is None:\n            return None\n        if left != right:\n            return None\n        return left + (1 - class_var.color)",
+      "tar": "        if (class_var === null || class_var.left === null || class_var.right === null) {\n            return 1;\n        }\n        var left = class_var.left.black_height();\n        var right = class_var.right.black_height();\n        if (left === null || right === null) {\n            return null;\n        }\n        if (left !== right) {\n            return null;\n        }\n        return left + (1 - class_var.color);"
+    }
+  },
+  "learn_overfitted_rules_stat_nids": [],
+  "learn_overfitted_rules_simple_ntexts": []
+}

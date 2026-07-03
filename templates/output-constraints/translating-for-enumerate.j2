@@ -1,0 +1,8 @@
+* When translating a Python for loop that uses `enumerate`, always use `var` instead of `let` when declaring variables in the JavaScript translation. For example:
+  i. `for i, value in enumerate(items):`
+      should be translated to
+      ```
+      for (var i = 0; i < items.length; i++) {
+           var value = items[i];
+      }
+      ```
